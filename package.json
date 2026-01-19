@@ -1,0 +1,43 @@
+{
+  "name": "helix-lang",
+  "version": "3.0.0",
+  "description": "Helix - AI-Native Programming Language CLI with Full-Stack Generation",
+  "main": "dist/index.js",
+  "bin": {
+    "helix": "./dist/bin/helix.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/bin/helix.js",
+    "dev": "npx ts-node src/bin/helix.ts",
+    "helix": "npx ts-node src/bin/helix.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "helix",
+    "ai",
+    "code-generation",
+    "cli",
+    "react",
+    "nextjs",
+    "prisma",
+    "full-stack"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "chalk": "^4.1.2",
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.7",
+    "execa": "^5.1.1",
+    "fs-extra": "^11.2.0",
+    "ora": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^22.10.7",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  }
+}
