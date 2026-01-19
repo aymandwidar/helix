@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
 /**
- * Helix CLI v3.0 - The Autonomic Stack
+ * Helix CLI v4.0 - One-Shot Generation
  * AI-Native Programming Language with Full-Stack Generation
  * 
  * Commands:
+ *   spawn <prompt>        - ONE-SHOT: Full app from natural language
  *   new <project>         - Scaffold a new Helix project
  *   generate <blueprint>  - Generate Prisma + API + UI from .helix
  *   run                   - Start the dev server
@@ -34,13 +35,16 @@ import { createProject } from "../commands/new";
 import { generateStack } from "../commands/generate";
 import { runDevServer } from "../commands/run";
 
+// Import v4.0 command modules
+import { spawnApp } from "../commands/spawn";
+
 // ASCII Art Banner
 const banner = `
 ${chalk.cyan("╦ ╦╔═╗╦  ╦═╗ ╦")}
 ${chalk.cyan("╠═╣║╣ ║  ║╔╩╦╝")}
-${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.yellow("v3.0")}
-${chalk.gray("The Autonomic Stack")}
-${chalk.gray("Full-Stack Generation Engine")}
+${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.yellow("v4.0")}
+${chalk.gray("One-Shot Generation")}
+${chalk.gray("Full-Stack from Natural Language")}
 `;
 
 const program = new Command();
@@ -48,8 +52,26 @@ const program = new Command();
 program
     .name("helix")
     .description("Helix - AI-Native Programming Language CLI")
-    .version("3.0.0")
+    .version("4.0.0")
     .addHelpText("before", banner);
+
+// ============================================================================
+// V4.0 COMMAND: One-Shot Spawn
+// ============================================================================
+
+program
+    .command("spawn <prompt>")
+    .description("ONE-SHOT: Build complete app from natural language (zero intervention)")
+    .action(async (prompt: string) => {
+        console.log(banner);
+
+        if (!process.env.OPENROUTER_API_KEY) {
+            console.error(chalk.red("❌ OPENROUTER_API_KEY not found in environment"));
+            process.exit(1);
+        }
+
+        await spawnApp(prompt);
+    });
 
 // ============================================================================
 // V3.0 COMMANDS: Full-Stack Generation
@@ -243,13 +265,12 @@ program
 
 program.addHelpText("after", `
 ${chalk.cyan("Examples:")}
-  ${chalk.gray("# Create a new full-stack project")}
+  ${chalk.gray("# ONE-SHOT: Complete app from natural language")}
+  $ helix spawn "Expense tracker for my small business"
+
+  ${chalk.gray("# Manual workflow:")}
   $ helix new my-app
-
-  ${chalk.gray("# Generate stack from blueprint")}
   $ helix generate app.helix
-
-  ${chalk.gray("# Start development server")}
   $ helix run
 
   ${chalk.gray("# AI-powered research and drafting")}
