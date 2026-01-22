@@ -120,6 +120,19 @@ STRICT REQUIREMENTS:
    import 'package:flutter/material.dart';
    import 'package:provider/provider.dart';
 
+**STRICT DART TYPING RULES (CRITICAL - MUST FOLLOW):**
+1. Text Widgets: You CANNOT pass a non-String variable directly to a Text widget.
+   - WRONG: Text(agent.rank)
+   - RIGHT: Text(agent.rank.toString())
+   - RIGHT: Text('\${agent.rank}')
+2. String Interpolation: Always use interpolation for mixed content.
+   - RIGHT: Text('Value: \${asset.value}')
+   - RIGHT: Text('Count: \${items.length}')
+3. Form Fields: When setting initialValue for TextFormField with numeric field, use .toString().
+   - RIGHT: initialValue: item.count.toString()
+4. NEVER assign an int, double, or num to a String variable without .toString().
+5. ALL model properties displayed in Text widgets MUST use .toString() or string interpolation.
+
 ${constitution ? `CONSTITUTION/CONTEXT:\n${constitution}\n` : ""}
 
 Generate a production-ready Flutter app based on the user's description. Make it visually polished with proper spacing, icons, and animations.`;
