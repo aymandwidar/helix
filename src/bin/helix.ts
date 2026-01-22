@@ -124,26 +124,52 @@ program
     });
 
 program
-    .command("generate <blueprint>")
+    .command("generate [blueprint]")
     .alias("gen")
-    .description("Generate full stack from .helix blueprint (Prisma + API + UI)")
+    .description("Generate full stack from .helix blueprint or prompt")
     .option("-t, --target <platform>", "Target platform: 'web' (Next.js) or 'flutter' (Mobile)", "web")
-    .action(async (blueprint: string, options: { target?: string }) => {
+    .option("-p, --prompt <text>", "Direct prompt for generation (Flutter only)")
+    .action(async (blueprint: string | undefined, options: { target?: string; prompt?: string }) => {
         console.log(banner);
 
         // Route to appropriate generator based on target
         if (options.target === "flutter") {
             console.log(chalk.magenta("📱 Target: Flutter Mobile App"));
-            // Read blueprint file content and pass to Flutter generator
-            const blueprintPath = path.resolve(process.cwd(), blueprint);
-            if (!fs.existsSync(blueprintPath)) {
-                console.error(chalk.red(`❌ Blueprint file not found: ${blueprint}`));
+
+            let generationPrompt: string;
+
+            // Priority 1: Direct --prompt flag
+            if (options.prompt) {
+                generationPrompt = options.prompt;
+                console.log(chalk.yellow("📝 Using direct prompt"));
+            }
+            // Priority 2: Blueprint file
+            else if (blueprint) {
+                const blueprintPath = path.resolve(process.cwd(), blueprint);
+                if (!fs.existsSync(blueprintPath)) {
+                    console.error(chalk.red(`❌ Blueprint file not found: ${blueprint}`));
+                    process.exit(1);
+                }
+                const blueprintContent = fs.readFileSync(blueprintPath, "utf-8");
+                generationPrompt = `Generate from this .helix blueprint:\n\n${blueprintContent}`;
+                console.log(chalk.yellow(`📄 Using blueprint: ${blueprint}`));
+            }
+            // No input provided
+            else {
+                console.error(chalk.red("❌ Please provide a blueprint file or use --prompt"));
+                console.log(chalk.gray("  helix generate blueprint.helix --target flutter"));
+                console.log(chalk.gray('  helix generate --target flutter --prompt "A task app with..."'));
                 process.exit(1);
             }
-            const blueprintContent = fs.readFileSync(blueprintPath, "utf-8");
-            // Use the blueprint content as the prompt for Flutter generation
-            await regenerateFlutterDart(`Generate from this .helix blueprint:\n\n${blueprintContent}`);
+
+            await regenerateFlutterDart(generationPrompt);
         } else {
+            // Web target requires a blueprint file
+            if (!blueprint) {
+                console.error(chalk.red("❌ Please provide a blueprint file for web generation"));
+                console.log(chalk.gray("  helix generate blueprint.helix"));
+                process.exit(1);
+            }
             console.log(chalk.cyan("🌐 Target: Next.js Web App"));
             await generateStack(blueprint);
         }
