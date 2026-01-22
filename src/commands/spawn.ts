@@ -448,195 +448,99 @@ Output the corrected schema:`;
 }
 
 /**
- * Generate a home page for spawned apps with FULL CRUD functionality
- * MUTATION PROTOCOL: Every app MUST have data entry capability
+ * Generate a home page for spawned apps with FULL CRUD for ALL strands
  */
 function generateSpawnHomePage(prompt: string, ast: HelixAST): string {
-  // Find the primary view
-  const primaryViewNames = ['Main', 'Home', 'Root', 'Dashboard', 'App'];
-  let primaryView = ast.views.find(v =>
-    primaryViewNames.some(name => v.name.toLowerCase() === name.toLowerCase())
-  ) || ast.views[0];
-
-  if (!primaryView) {
-    return `// Spawned by Helix v4.0
-export default function Home() {
-  return (
-    <main className="min-h-screen p-8 flex items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold text-white mb-4">🧬 ${prompt.split(" ").slice(0, 5).join(" ")}</h1>
-        <p className="text-gray-400">No views defined. Check your blueprint.</p>
-      </div>
-    </main>
-  );
-}
-`;
+  const appTitle = prompt.split(" ").slice(0, 5).join(" ");
+  if (ast.strands.length === 0) {
+    return `// Spawned by Helix v4.2\nexport default function Home() { return (<main className="min-h-screen p-8 flex items-center justify-center"><div className="text-center"><h1 className="text-4xl font-bold text-white mb-4">🧬 ${appTitle}</h1><p className="text-gray-400">No strands</p></div></main>); }`;
   }
 
-  // Find the strand associated with the primary view
-  const listProp = primaryView.properties["list"] || "";
-  const strandName = listProp.split(".")[0] || ast.strands[0]?.name || "Item";
-  const strand = ast.strands.find(s => s.name === strandName) || ast.strands[0];
-  const lowerName = strandName.toLowerCase();
+  const interfaces = ast.strands.map(s => {
+    const f = s.fields.map(f => `${f.name}: ${f.type === 'String' ? 'string' : f.type === 'Int' || f.type === 'Float' ? 'number' : 'string'}`).join('; ');
+    return `interface ${s.name} { id: string; ${f}; createdAt: string; }`;
+  }).join('\n');
 
-  // Generate field types for TypeScript interface
-  const fieldTypes = strand?.fields.map(f => {
-    const tsType = f.type === 'String' ? 'string' :
-      f.type === 'Int' || f.type === 'Float' ? 'number' :
-        f.type === 'Boolean' ? 'boolean' : 'string';
-    return `  ${f.name}: ${tsType};`;
-  }).join('\n') || '  name: string;';
+  const states = ast.strands.map(s => {
+    const l = s.name.toLowerCase();
+    const init = s.fields.map(f => `${f.name}: ${f.type === 'Int' || f.type === 'Float' ? '0' : "''"}`).join(', ');
+    return `const [${l}s, set${s.name}s] = useState<${s.name}[]>([]);
+  const [show${s.name}Form, setShow${s.name}Form] = useState(false);
+  const [${l}Form, set${s.name}Form] = useState({ ${init} });`;
+  }).join('\n  ');
 
-  // Generate form fields JSX
-  const formFieldsJsx = strand?.fields.map(f => {
-    const inputType = f.type === 'Int' || f.type === 'Float' ? 'number' :
-      f.type === 'Boolean' ? 'checkbox' : 'text';
-    const label = f.name.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim();
+  const funcs = ast.strands.map(s => {
+    const l = s.name.toLowerCase();
+    return `const fetch${s.name}s = async () => { set${s.name}s(await (await fetch('/api/${l}')).json()); };
+  const submit${s.name} = async (e: React.FormEvent) => { e.preventDefault(); await fetch('/api/${l}', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${l}Form) }); setShow${s.name}Form(false); fetch${s.name}s(); };
+  const del${s.name} = async (id: string) => { if (!confirm('Delete?')) return; await fetch('/api/${l}?id=' + id, { method: 'DELETE' }); fetch${s.name}s(); };`;
+  }).join('\n  ');
 
-    if (inputType === 'checkbox') {
-      return `                <label className="flex items-center gap-3 text-white">
-                  <input type="checkbox" name="${f.name}" checked={formData.${f.name} || false} onChange={(e) => setFormData({...formData, ${f.name}: e.target.checked})} className="w-5 h-5 rounded" />
-                  ${label}
-                </label>`;
-    }
-    return `                <div>
-                  <label className="block text-gray-400 text-sm mb-1">${label}</label>
-                  <input type="${inputType}" value={formData.${f.name} || ''} onChange={(e) => setFormData({...formData, ${f.name}: ${inputType === 'number' ? 'Number(e.target.value)' : 'e.target.value'}})} className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                </div>`;
-  }).join('\n') || '';
+  const fetchAll = ast.strands.map(s => `fetch${s.name}s()`).join('; ');
 
-  // Generate initial state
-  const initialState = strand?.fields.map(f => {
-    const val = f.type === 'Boolean' ? 'false' : f.type === 'Int' || f.type === 'Float' ? '0' : "''";
-    return `    ${f.name}: ${val}`;
-  }).join(',\n') || '    name: ""';
+  const sections = ast.strands.map(s => {
+    const l = s.name.toLowerCase();
+    const inputs = s.fields.map(f => {
+      const t = f.type === 'Int' || f.type === 'Float' ? 'number' : 'text';
+      return `<div className="mb-3"><label className="block text-gray-400 text-sm mb-1">${f.name}</label><input type="${t}" value={${l}Form.${f.name} || ''} onChange={e => set${s.name}Form({...${l}Form, ${f.name}: ${t === 'number' ? 'Number(e.target.value)' : 'e.target.value'}})} className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white" /></div>`;
+    }).join('\n            ');
+    const display = s.fields.slice(0, 4).map(f => `<div><span className="text-gray-500 text-xs">${f.name}</span><div className="text-white text-sm">{String(item.${f.name})}</div></div>`).join('\n                ');
+    return `
+        <section className="mb-10">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-bold text-white">${s.name}s</h2>
+            <button onClick={() => setShow${s.name}Form(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg">+ Add</button>
+          </div>
+          {show${s.name}Form && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="bg-gray-900 border border-white/10 rounded-xl p-6 w-full max-w-md">
+                <h3 className="text-xl font-bold text-white mb-4">Add ${s.name}</h3>
+                <form onSubmit={submit${s.name}}>
+            ${inputs}
+                  <div className="flex gap-3 mt-4">
+                    <button type="button" onClick={() => setShow${s.name}Form(false)} className="flex-1 bg-white/10 text-white py-2 rounded-lg">Cancel</button>
+                    <button type="submit" className="flex-1 bg-indigo-600 text-white py-2 rounded-lg">Create</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+          <div className="space-y-2">
+            {${l}s.length === 0 ? <div className="glass rounded-lg p-6 text-center text-gray-400">No ${l}s yet</div> : ${l}s.map(item => (
+              <div key={item.id} className="glass rounded-lg p-4 group flex justify-between hover:bg-white/5">
+                <div className="grid grid-cols-4 gap-4 flex-1">${display}</div>
+                <button onClick={() => del${s.name}(item.id)} className="opacity-0 group-hover:opacity-100 text-red-400">🗑️</button>
+              </div>
+            ))}
+          </div>
+        </section>`;
+  }).join('\n');
 
-  // Get the title from prompt
-  const appTitle = prompt.split(" ").slice(0, 5).join(" ");
-
-  return `// Spawned by Helix v4.0 - FULL CRUD App
-// Primary View: ${primaryView.name}
-// MUTATION PROTOCOL: Data entry enabled
+  return `// Spawned by Helix v4.2 - Multi-Strand
 'use client';
-
 import { useState, useEffect } from 'react';
-
-interface ${strandName} {
-  id: string;
-${fieldTypes}
-  createdAt: string;
-}
-
+${interfaces}
 export default function Home() {
-  const [items, setItems] = useState<${strandName}[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({
-${initialState}
-  });
-
-  const fetchItems = async () => {
-    try {
-      const res = await fetch('/api/${lowerName}');
-      const data = await res.json();
-      setItems(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { fetchItems(); }, []);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const res = await fetch('/api/${lowerName}', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
-      if (res.ok) {
-        setShowForm(false);
-        setFormData({
-${initialState}
-        });
-        fetchItems();
-      }
-    } catch (e) { console.error(e); }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this item?')) return;
-    await fetch('/api/${lowerName}?id=' + id, { method: 'DELETE' });
-    fetchItems();
-  };
-
-  if (loading) return <main className="min-h-screen p-8 flex items-center justify-center"><div className="text-white text-xl animate-pulse">Loading...</div></main>;
-
+  ${states}
+  ${funcs}
+  useEffect(() => { ${fetchAll}; setLoading(false); }, []);
+  if (loading) return <main className="min-h-screen p-8 flex items-center justify-center"><div className="text-white animate-pulse">Loading...</div></main>;
   return (
     <main className="min-h-screen p-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-4">
-          <span className="text-sm text-indigo-400 font-mono">🧬 Spawned by Helix</span>
+      <div className="max-w-6xl mx-auto">
+        <div className="mb-8">
+          <span className="text-sm text-indigo-400 font-mono">🧬 Helix</span>
+          <h1 className="text-4xl font-bold text-white mt-1">${appTitle}</h1>
+          <p className="text-gray-400">${ast.strands.length} data types</p>
         </div>
-        
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-4xl font-bold text-white">${appTitle}</h1>
-            <p className="text-gray-400">${primaryView.name}</p>
-          </div>
-          <button onClick={() => setShowForm(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2">
-            <span className="text-xl">+</span> Add ${strandName}
-          </button>
-        </div>
-
-        {showForm && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-gray-900 border border-white/10 rounded-2xl p-8 w-full max-w-md mx-4">
-              <h2 className="text-2xl font-bold text-white mb-6">Add New ${strandName}</h2>
-              <form onSubmit={handleSubmit} className="space-y-4">
-${formFieldsJsx}
-                <div className="flex gap-4 mt-6">
-                  <button type="button" onClick={() => setShowForm(false)} className="flex-1 bg-white/10 hover:bg-white/20 text-white py-3 rounded-lg">Cancel</button>
-                  <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-medium">Create</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        <div className="space-y-4">
-          {items.length === 0 ? (
-            <div className="glass rounded-xl p-12 text-center">
-              <p className="text-gray-400 text-lg">No ${lowerName}s yet.</p>
-              <p className="text-gray-500 mt-2">Click "Add ${strandName}" to create your first one!</p>
-            </div>
-          ) : (
-            items.map((item) => (
-              <div key={item.id} className="glass rounded-xl p-6 hover:bg-white/10 transition-all group">
-                <div className="flex justify-between items-start">
-                  <div className="grid grid-cols-2 gap-4 flex-1">
-${strand?.fields.map(f => `                    <div>
-                      <span className="text-gray-500 text-sm">${f.name.replace(/_/g, ' ')}</span>
-                      <div className="text-white font-medium">{String(item.${f.name})}</div>
-                    </div>`).join('\n') || '                    <div className="text-white">{JSON.stringify(item)}</div>'}
-                  </div>
-                  <button onClick={() => handleDelete(item.id)} className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 p-2 transition-opacity">🗑️</button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-        
-        <footer className="mt-16 text-center text-gray-500 text-sm">
-          Powered by Helix v4.0 One-Shot Generation
-        </footer>
+${sections}
       </div>
     </main>
   );
 }
 `;
 }
+
+
 
