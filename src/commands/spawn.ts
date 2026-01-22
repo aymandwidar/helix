@@ -497,17 +497,126 @@ function generateSpawnHomePage(prompt: string, ast: HelixAST): string {
 
   const fetchAll = ast.strands.map(s => `fetch${s.name}s()`).join('; ');
 
+  // SMART VIEW DETECTION - Analyze fields to determine best layout
+  const detectViewType = (fields: Array<{ name: string, type: string }>): 'gallery' | 'kanban' | 'feed' | 'grid' => {
+    const fieldNames = fields.map(f => f.name.toLowerCase());
+    // Gallery: has image field
+    if (fieldNames.some(n => ['image', 'photo', 'avatar', 'thumbnail', 'cover', 'picture', 'img'].includes(n))) {
+      return 'gallery';
+    }
+    // Kanban: has status/stage field
+    if (fieldNames.some(n => ['status', 'stage', 'phase', 'state', 'progress'].includes(n))) {
+      return 'kanban';
+    }
+    // Feed: has title + content
+    const hasTitle = fieldNames.some(n => ['title', 'name', 'headline'].includes(n));
+    const hasContent = fieldNames.some(n => ['body', 'content', 'description', 'message', 'text', 'note'].includes(n));
+    if (hasTitle && hasContent) {
+      return 'feed';
+    }
+    return 'grid';
+  };
+
   const sections = ast.strands.map(s => {
     const l = s.name.toLowerCase();
+    const viewType = detectViewType(s.fields);
     const inputs = s.fields.map(f => {
       const t = f.type === 'Int' || f.type === 'Float' ? 'number' : 'text';
       return `<div className="mb-3"><label className="block text-gray-400 text-sm mb-1">${f.name}</label><input type="${t}" value={${l}Form.${f.name} || ''} onChange={e => set${s.name}Form({...${l}Form, ${f.name}: ${t === 'number' ? 'Number(e.target.value)' : 'e.target.value'}})} className="w-full bg-white/5 border border-white/10 rounded-md p-3 text-white placeholder-white/50 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors" /></div>`;
     }).join('\n            ');
-    const display = s.fields.slice(0, 4).map(f => `<div><span className="text-gray-500 text-xs">${f.name}</span><div className="text-white text-sm">{String(item.${f.name})}</div></div>`).join('\n                ');
+
+    // Generate different layouts based on view type
+    let itemsLayout = '';
+    const titleField = s.fields.find(f => ['title', 'name', 'headline', 'codename'].includes(f.name.toLowerCase()))?.name || s.fields[0]?.name || 'id';
+    const imageField = s.fields.find(f => ['image', 'photo', 'avatar', 'thumbnail', 'cover', 'picture', 'img'].includes(f.name.toLowerCase()))?.name;
+    const statusField = s.fields.find(f => ['status', 'stage', 'phase', 'state', 'progress'].includes(f.name.toLowerCase()))?.name;
+    const contentField = s.fields.find(f => ['body', 'content', 'description', 'message', 'text', 'note'].includes(f.name.toLowerCase()))?.name;
+
+    if (viewType === 'gallery' && imageField) {
+      // GALLERY VIEW - Grid of cards with images
+      itemsLayout = `<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {${l}s.map(item => (
+              <div key={item.id} className="glass rounded-xl overflow-hidden group">
+                <div className="aspect-square bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center">
+                  {item.${imageField} ? <img src={item.${imageField}} alt="" className="w-full h-full object-cover" /> : <span className="text-4xl">🖼️</span>}
+                </div>
+                <div className="p-3">
+                  <div className="text-white font-medium truncate">{item.${titleField}}</div>
+                  <div className="text-gray-400 text-xs mt-1">{new Date(item.createdAt).toLocaleDateString()}</div>
+                </div>
+                <button onClick={() => del${s.name}(item.id)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 bg-red-500/80 text-white p-1 rounded text-xs">🗑️</button>
+              </div>
+            ))}
+          </div>`;
+    } else if (viewType === 'kanban' && statusField) {
+      // KANBAN VIEW - Columns by status
+      itemsLayout = `<div className="flex gap-4 overflow-x-auto pb-4">
+            {['Todo', 'In Progress', 'Done', 'Pending', 'Active', 'Complete'].filter(status => ${l}s.some(i => i.${statusField}?.toLowerCase().includes(status.toLowerCase()))).map(status => (
+              <div key={status} className="min-w-[280px] glass rounded-xl p-4">
+                <h4 className="text-white font-bold mb-3 flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full" style={{background: status === 'Done' || status === 'Complete' ? '#10b981' : status === 'In Progress' || status === 'Active' ? '#f59e0b' : '#6366f1'}}></span>
+                  {status}
+                </h4>
+                <div className="space-y-2">
+                  {${l}s.filter(i => i.${statusField}?.toLowerCase().includes(status.toLowerCase())).map(item => (
+                    <div key={item.id} className="bg-white/5 rounded-lg p-3 group">
+                      <div className="text-white text-sm font-medium">{item.${titleField}}</div>
+                      <button onClick={() => del${s.name}(item.id)} className="opacity-0 group-hover:opacity-100 text-red-400 text-xs mt-1">Delete</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {${l}s.filter(i => !['todo', 'in progress', 'done', 'pending', 'active', 'complete'].some(s => i.${statusField}?.toLowerCase().includes(s))).length > 0 && (
+              <div className="min-w-[280px] glass rounded-xl p-4">
+                <h4 className="text-white font-bold mb-3">Other</h4>
+                <div className="space-y-2">
+                  {${l}s.filter(i => !['todo', 'in progress', 'done', 'pending', 'active', 'complete'].some(s => i.${statusField}?.toLowerCase().includes(s))).map(item => (
+                    <div key={item.id} className="bg-white/5 rounded-lg p-3 group">
+                      <div className="text-white text-sm">{item.${titleField}}</div>
+                      <button onClick={() => del${s.name}(item.id)} className="opacity-0 group-hover:opacity-100 text-red-400 text-xs">Delete</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>`;
+    } else if (viewType === 'feed' && contentField) {
+      // FEED VIEW - Vertical timeline
+      itemsLayout = `<div className="space-y-4">
+            {${l}s.map(item => (
+              <article key={item.id} className="glass rounded-xl p-5 group">
+                <div className="flex justify-between items-start mb-2">
+                  <h3 className="text-xl font-bold text-white">{item.${titleField}}</h3>
+                  <button onClick={() => del${s.name}(item.id)} className="opacity-0 group-hover:opacity-100 text-red-400">🗑️</button>
+                </div>
+                <p className="text-gray-300 leading-relaxed">{item.${contentField}}</p>
+                <div className="mt-3 text-gray-500 text-sm">{new Date(item.createdAt).toLocaleString()}</div>
+              </article>
+            ))}
+          </div>`;
+    } else {
+      // DATAGRID VIEW - Default table-like layout
+      const display = s.fields.slice(0, 4).map(f => `<div><span className="text-gray-500 text-xs">${f.name}</span><div className="text-white text-sm">{String(item.${f.name})}</div></div>`).join('\n                ');
+      itemsLayout = `<div className="space-y-2">
+            {${l}s.map(item => (
+              <div key={item.id} className="glass rounded-lg p-4 group flex justify-between hover:bg-white/5">
+                <div className="grid grid-cols-4 gap-4 flex-1">${display}</div>
+                <button onClick={() => del${s.name}(item.id)} className="opacity-0 group-hover:opacity-100 text-red-400">🗑️</button>
+              </div>
+            ))}
+          </div>`;
+    }
+
+    const viewLabel = viewType === 'gallery' ? '🖼️ Gallery' : viewType === 'kanban' ? '📋 Board' : viewType === 'feed' ? '📰 Feed' : '📊 Grid';
+
     return `
         <section className="mb-10">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-bold text-white">${s.name}s</h2>
+            <div>
+              <h2 className="text-2xl font-bold text-white">${s.name}s</h2>
+              <span className="text-xs text-gray-500">${viewLabel}</span>
+            </div>
             <button onClick={() => setShow${s.name}Form(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg">+ Add</button>
           </div>
           {show${s.name}Form && (
@@ -524,14 +633,7 @@ function generateSpawnHomePage(prompt: string, ast: HelixAST): string {
               </div>
             </div>
           )}
-          <div className="space-y-2">
-            {${l}s.length === 0 ? <div className="glass rounded-lg p-6 text-center text-gray-400">No ${l}s yet</div> : ${l}s.map(item => (
-              <div key={item.id} className="glass rounded-lg p-4 group flex justify-between hover:bg-white/5">
-                <div className="grid grid-cols-4 gap-4 flex-1">${display}</div>
-                <button onClick={() => del${s.name}(item.id)} className="opacity-0 group-hover:opacity-100 text-red-400">🗑️</button>
-              </div>
-            ))}
-          </div>
+          {${l}s.length === 0 ? <div className="glass rounded-lg p-6 text-center text-gray-400">No ${l}s yet</div> : ${itemsLayout}}
         </section>`;
   }).join('\n');
 
