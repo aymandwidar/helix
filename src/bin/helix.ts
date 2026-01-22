@@ -62,7 +62,8 @@ program
 program
     .command("spawn <prompt>")
     .description("ONE-SHOT: Build complete app from natural language (zero intervention)")
-    .action(async (prompt: string) => {
+    .option("-c, --context <path>", "Path to context/constitution file")
+    .action(async (prompt: string, options: { context?: string }) => {
         console.log(banner);
 
         if (!process.env.OPENROUTER_API_KEY) {
@@ -70,7 +71,35 @@ program
             process.exit(1);
         }
 
-        await spawnApp(prompt);
+        // Resolve constitution/context file
+        let constitutionContent: string | undefined;
+        let constitutionSource: string | undefined;
+
+        // Priority 1: Explicit --context flag
+        if (options.context) {
+            const contextPath = path.resolve(process.cwd(), options.context);
+            if (fs.existsSync(contextPath)) {
+                constitutionContent = fs.readFileSync(contextPath, "utf-8");
+                constitutionSource = options.context;
+            } else {
+                console.error(chalk.red(`❌ Context file not found: ${options.context}`));
+                process.exit(1);
+            }
+        } else {
+            // Priority 2: Auto-detect constitution.md in current directory
+            const defaultConstitution = path.join(process.cwd(), "constitution.md");
+            if (fs.existsSync(defaultConstitution)) {
+                constitutionContent = fs.readFileSync(defaultConstitution, "utf-8");
+                constitutionSource = "constitution.md";
+            }
+        }
+
+        // Log if constitution is loaded
+        if (constitutionSource) {
+            console.log(chalk.yellow(`⚖️  Constitution Loaded: ${constitutionSource}`));
+        }
+
+        await spawnApp(prompt, constitutionContent);
     });
 
 // ============================================================================
