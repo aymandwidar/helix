@@ -37,12 +37,13 @@ import { runDevServer } from "../commands/run";
 
 // Import v4.0 command modules
 import { spawnApp } from "../commands/spawn";
+import { generateFlutterApp } from "../generators/flutter";
 
 // ASCII Art Banner
 const banner = `
 ${chalk.cyan("╦ ╦╔═╗╦  ╦═╗ ╦")}
 ${chalk.cyan("╠═╣║╣ ║  ║╔╩╦╝")}
-${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.yellow("v4.0")}
+${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.yellow("v4.2")}
 ${chalk.gray("One-Shot Generation")}
 ${chalk.gray("Full-Stack from Natural Language")}
 `;
@@ -52,7 +53,7 @@ const program = new Command();
 program
     .name("helix")
     .description("Helix - AI-Native Programming Language CLI")
-    .version("4.0.0")
+    .version("4.2.0")
     .addHelpText("before", banner);
 
 // ============================================================================
@@ -63,7 +64,8 @@ program
     .command("spawn <prompt>")
     .description("ONE-SHOT: Build complete app from natural language (zero intervention)")
     .option("-c, --context <path>", "Path to context/constitution file")
-    .action(async (prompt: string, options: { context?: string }) => {
+    .option("-t, --target <platform>", "Target platform: 'web' (Next.js) or 'flutter' (Mobile)", "web")
+    .action(async (prompt: string, options: { context?: string; target?: string }) => {
         console.log(banner);
 
         if (!process.env.OPENROUTER_API_KEY) {
@@ -99,7 +101,14 @@ program
             console.log(chalk.yellow(`⚖️  Constitution Loaded: ${constitutionSource}`));
         }
 
-        await spawnApp(prompt, constitutionContent);
+        // Route to appropriate generator based on target
+        if (options.target === "flutter") {
+            console.log(chalk.magenta("📱 Target: Flutter Mobile App"));
+            await generateFlutterApp(prompt, constitutionContent);
+        } else {
+            console.log(chalk.cyan("🌐 Target: Next.js Web App"));
+            await spawnApp(prompt, constitutionContent);
+        }
     });
 
 // ============================================================================
