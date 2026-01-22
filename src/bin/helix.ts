@@ -37,7 +37,7 @@ import { runDevServer } from "../commands/run";
 
 // Import v4.0 command modules
 import { spawnApp } from "../commands/spawn";
-import { generateFlutterApp } from "../generators/flutter";
+import { generateFlutterApp, regenerateFlutterDart } from "../generators/flutter";
 
 // ASCII Art Banner
 const banner = `
@@ -127,9 +127,26 @@ program
     .command("generate <blueprint>")
     .alias("gen")
     .description("Generate full stack from .helix blueprint (Prisma + API + UI)")
-    .action(async (blueprint: string) => {
+    .option("-t, --target <platform>", "Target platform: 'web' (Next.js) or 'flutter' (Mobile)", "web")
+    .action(async (blueprint: string, options: { target?: string }) => {
         console.log(banner);
-        await generateStack(blueprint);
+
+        // Route to appropriate generator based on target
+        if (options.target === "flutter") {
+            console.log(chalk.magenta("📱 Target: Flutter Mobile App"));
+            // Read blueprint file content and pass to Flutter generator
+            const blueprintPath = path.resolve(process.cwd(), blueprint);
+            if (!fs.existsSync(blueprintPath)) {
+                console.error(chalk.red(`❌ Blueprint file not found: ${blueprint}`));
+                process.exit(1);
+            }
+            const blueprintContent = fs.readFileSync(blueprintPath, "utf-8");
+            // Use the blueprint content as the prompt for Flutter generation
+            await regenerateFlutterDart(`Generate from this .helix blueprint:\n\n${blueprintContent}`);
+        } else {
+            console.log(chalk.cyan("🌐 Target: Next.js Web App"));
+            await generateStack(blueprint);
+        }
     });
 
 program

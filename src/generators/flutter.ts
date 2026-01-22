@@ -87,6 +87,46 @@ export async function generateFlutterApp(
 }
 
 /**
+ * Regenerate main.dart for an EXISTING Flutter project
+ * Used by "helix generate blueprint.helix --target flutter"
+ */
+export async function regenerateFlutterDart(
+    prompt: string,
+    constitution?: string
+): Promise<void> {
+    console.log(chalk.magenta("\n📱 HELIX FLUTTER - Regenerating main.dart\n"));
+
+    // Check if we're in a Flutter project
+    const libPath = path.join(process.cwd(), "lib");
+    const pubspecPath = path.join(process.cwd(), "pubspec.yaml");
+
+    if (!fs.existsSync(pubspecPath)) {
+        // Not in a Flutter project - create a new one
+        console.log(chalk.yellow("⚠️  Not in a Flutter project. Creating new app..."));
+        await generateFlutterApp(prompt, constitution);
+        return;
+    }
+
+    // Regenerate main.dart
+    const codeSpinner = ora("Regenerating Flutter code...").start();
+    try {
+        const mainDart = await generateMainDart(prompt, constitution);
+        await fs.ensureDir(libPath);
+        await fs.writeFile(path.join(libPath, "main.dart"), mainDart);
+        codeSpinner.succeed("Flutter code regenerated");
+    } catch (error) {
+        codeSpinner.fail("Failed to regenerate code");
+        console.error(error);
+        return;
+    }
+
+    console.log(chalk.green("\n✅ main.dart regenerated successfully!\n"));
+    console.log(chalk.cyan("Run your app:"));
+    console.log(chalk.white("  flutter run"));
+    console.log("");
+}
+
+/**
  * Generate main.dart content using AI
  */
 async function generateMainDart(
