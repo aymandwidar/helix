@@ -482,7 +482,7 @@ function generateSpawnHomePage(prompt: string, ast: HelixAST): string {
     const l = s.name.toLowerCase();
     const inputs = s.fields.map(f => {
       const t = f.type === 'Int' || f.type === 'Float' ? 'number' : 'text';
-      return `<div className="mb-3"><label className="block text-gray-400 text-sm mb-1">${f.name}</label><input type="${t}" value={${l}Form.${f.name} || ''} onChange={e => set${s.name}Form({...${l}Form, ${f.name}: ${t === 'number' ? 'Number(e.target.value)' : 'e.target.value'}})} className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white" /></div>`;
+      return `<div className="mb-3"><label className="block text-gray-400 text-sm mb-1">${f.name}</label><input type="${t}" value={${l}Form.${f.name} || ''} onChange={e => set${s.name}Form({...${l}Form, ${f.name}: ${t === 'number' ? 'Number(e.target.value)' : 'e.target.value'}})} className="w-full bg-white/5 border border-white/10 rounded-md p-3 text-white placeholder-white/50 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors" /></div>`;
     }).join('\n            ');
     const display = s.fields.slice(0, 4).map(f => `<div><span className="text-gray-500 text-xs">${f.name}</span><div className="text-white text-sm">{String(item.${f.name})}</div></div>`).join('\n                ');
     return `
