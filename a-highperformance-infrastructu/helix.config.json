@@ -1,0 +1,6 @@
+{
+  "version": "4.0.0",
+  "spawned": true,
+  "prompt": "A high-performance infrastructure monitor called 'Velocity'.\nUse the 4See Constitution.\nApply 'Antigravity Mode': Maximum Data Density.\n\nStrand 1: 'Node' \n  - Fields: Hostname, IP_Address, Region (US-East/EU-West/Asia), Status (Online/Degraded/Offline), Latency_ms (Int).\n\nStrand 2: 'Process' \n  - Fields: PID, Name, Memory_Usage_MB, CPU_Load_Percent.\n  - Relation: Each Process belongs to a Node.\n\nUI Requirements:\n  - The Dashboard must show a 'Cluster Health' grid.\n  - The 'Add Process' form must use a Dropdown to select the Node (Relationship).\n  - Use colored badges for Status (Green=Online, Red=Offline).",
+  "generatedAt": "2026-01-22T03:35:05.366Z"
+}

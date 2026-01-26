@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Helix CLI v4.0 - One-Shot Generation
+ * Helix CLI v10.0 - Complete Development Platform
  * AI-Native Programming Language with Full-Stack Generation
  * 
  * Commands:
@@ -9,9 +9,12 @@
  *   new <project>         - Scaffold a new Helix project
  *   generate <blueprint>  - Generate Prisma + API + UI from .helix
  *   run                   - Start the dev server
+ *   preview               - Hot-reload preview with file watching
+ *   deploy                - One-command deployment
  *   research <topic>      - Generate domain research
  *   draft <idea>          - Create a .helix blueprint
  *   build <file>          - Compile .helix to React component
+ *   plugins               - List registered generator plugins
  *   models                - List available AI models
  */
 
@@ -39,21 +42,27 @@ import { runDevServer } from "../commands/run";
 import { spawnApp } from "../commands/spawn";
 import { generateFlutterApp, regenerateFlutterDart } from "../generators/flutter";
 
+// Import v10.0 command modules
+import { deploy } from "../commands/deploy";
+import { preview } from "../commands/preview";
+import { getRegistry } from "../core/registry";
+import { DeploymentPlatform } from "../core/types";
+
 // ASCII Art Banner
 const banner = `
 ${chalk.cyan("╦ ╦╔═╗╦  ╦═╗ ╦")}
 ${chalk.cyan("╠═╣║╣ ║  ║╔╩╦╝")}
-${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.yellow("v4.2")}
-${chalk.gray("One-Shot Generation")}
-${chalk.gray("Full-Stack from Natural Language")}
+${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v10.0")}
+${chalk.gray("Complete Development Platform")}
+${chalk.gray("Generate • Preview • Deploy")}
 `;
 
 const program = new Command();
 
 program
     .name("helix")
-    .description("Helix - AI-Native Programming Language CLI")
-    .version("4.2.0")
+    .description("Helix - AI-Native Development Platform")
+    .version("10.0.0")
     .addHelpText("before", banner);
 
 // ============================================================================
@@ -65,7 +74,9 @@ program
     .description("ONE-SHOT: Build complete app from natural language (zero intervention)")
     .option("-c, --context <path>", "Path to context/constitution file")
     .option("-t, --target <platform>", "Target platform: 'web' (Next.js) or 'flutter' (Mobile)", "web")
-    .action(async (prompt: string, options: { context?: string; target?: string }) => {
+    .option("--db <type>", "Database type: 'local' (in-memory) or 'supabase' (cloud)", "local")
+    .option("--ai <type>", "AI Provider: 'none' (no AI) or 'openrouter' (cloud AI)", "none")
+    .action(async (prompt: string, options: { context?: string; target?: string; db?: string; ai?: string }) => {
         console.log(banner);
 
         if (!process.env.OPENROUTER_API_KEY) {
@@ -104,7 +115,15 @@ program
         // Route to appropriate generator based on target
         if (options.target === "flutter") {
             console.log(chalk.magenta("📱 Target: Flutter Mobile App"));
-            await generateFlutterApp(prompt, constitutionContent);
+            if (options.db === "supabase") {
+                console.log(chalk.blue("☁️  Database: Supabase Cloud (Realtime)"));
+            } else {
+                console.log(chalk.gray("💾 Database: Local (In-Memory)"));
+            }
+            if (options.ai === "openrouter") {
+                console.log(chalk.green("🤖 AI: OpenRouter (Cloud Intelligence)"));
+            }
+            await generateFlutterApp(prompt, constitutionContent, options.db, options.ai);
         } else {
             console.log(chalk.cyan("🌐 Target: Next.js Web App"));
             await spawnApp(prompt, constitutionContent);
@@ -341,6 +360,37 @@ program
     });
 
 // ============================================================================
+// V10.0 COMMANDS: Platform Features
+// ============================================================================
+
+program
+    .command("preview")
+    .description("Launch hot-reload preview server with .helix file watching")
+    .action(async () => {
+        console.log(banner);
+        await preview();
+    });
+
+program
+    .command("deploy")
+    .description("One-command deployment to cloud platforms")
+    .option("-p, --platform <platform>", "Deployment platform: vercel, firebase, netlify", "vercel")
+    .action(async (options: { platform: string }) => {
+        console.log(banner);
+        await deploy(options.platform as DeploymentPlatform);
+    });
+
+program
+    .command("plugins")
+    .description("List registered generator plugins")
+    .action(async () => {
+        console.log(banner);
+        const registry = getRegistry();
+        await registry.scanForPlugins();
+        registry.listPlugins();
+    });
+
+// ============================================================================
 // HELP ENHANCEMENTS
 // ============================================================================
 
@@ -348,16 +398,19 @@ program.addHelpText("after", `
 ${chalk.cyan("Examples:")}
   ${chalk.gray("# ONE-SHOT: Complete app from natural language")}
   $ helix spawn "Expense tracker for my small business"
+  $ helix spawn "Task app" --target flutter --db supabase --ai openrouter
+
+  ${chalk.gray("# Development workflow:")}
+  $ helix preview               ${chalk.gray("# Hot-reload with file watching")}
+  $ helix deploy --platform vercel  ${chalk.gray("# Ship to production")}
 
   ${chalk.gray("# Manual workflow:")}
   $ helix new my-app
   $ helix generate app.helix
   $ helix run
 
-  ${chalk.gray("# AI-powered research and drafting")}
-  $ helix research "e-commerce best practices"
-  $ helix draft "shopping cart with checkout"
-  $ helix build cart.helix
+  ${chalk.gray("# Plugin system:")}
+  $ helix plugins              ${chalk.gray("# List available generators")}
 `);
 
 // Parse command line arguments

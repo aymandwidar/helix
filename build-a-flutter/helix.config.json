@@ -1,0 +1,6 @@
+{
+  "version": "4.0.0",
+  "spawned": true,
+  "prompt": "Build a Flutter mobile app called 'LifeOS_Final'.Module 1: Finance* Create an Expenses table (Fields: Cost, Category, Date, Note).* The app should allow adding and listing expenses with a total sum at the top.Module 2: Fleet Manager* I have a fleet of 4 cars.* Create a Vehicle registry (Fields: Model, VIN, Year, Plate).* Create a Service log linked to Vehicles (Fields: ServiceType, Cost, Mileage, Date).* Allow me to add vehicles and log services for them.System Architecture:* Database: Use Supabase (PostgreSQL) for all tables.* AI: Use OpenRouter for any smart features.* Theme: Deep Void (Dark Mode) with translucent glass UI.",
+  "generatedAt": "2026-01-26T03:43:09.409Z"
+}

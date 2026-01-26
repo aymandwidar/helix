@@ -1,0 +1,6 @@
+{
+  "version": "4.0.0",
+  "spawned": true,
+  "prompt": "A high-performance trading engine called 'Hyper-Flux'.\nUse the 4See Constitution.\nStrand 1: 'Asset' (Symbol, Name, Current Price, Volatility: Low/Med/High).\nStrand 2: 'Trader' (Name, Callsign, Risk Tolerance, Capital).\nStrand 3: 'Transaction' (Type: Buy/Sell, Volume, Timestamp, Status: Pending/Cleared).\nTransactions are linked to Traders and Assets.\nThe Dashboard must track 'Live Market Data' and 'Active Order Book'.\nApply 'Antigravity Mode': The UI must be optimized for density and speed.",
+  "generatedAt": "2026-01-22T03:30:34.997Z"
+}
