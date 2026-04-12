@@ -1,177 +1,165 @@
-# 🧬 HELIX
+# Helix v11.0
 
-**One-Shot Full-Stack Application Generator**
+**AI-Powered Full-Stack App Generator**
 
-Transform natural language descriptions into fully functional Next.js applications with a single command.
+Generate complete, working applications from natural language. Helix transforms a single prompt into a Next.js app with database, API routes, styled UI, and tests -- in about 60 seconds.
 
 ```bash
 helix spawn "A recipe manager with ingredients and cook time"
-# → Complete app with database, API, and styled UI in ~60 seconds
+# -> Full app: database, API, React UI, tests, ready to run
 ```
 
 ---
 
-## ✨ What is Helix?
+## Features
 
-Helix is an AI-powered application generator that creates complete, production-ready Next.js applications from plain English descriptions. Unlike traditional scaffolding tools that produce empty boilerplates, Helix generates **working applications** with:
-
-- 🗃️ **SQLite Database** (Prisma ORM)
-- 🔌 **REST API Routes** (GET, POST, PUT, DELETE)
-- 🎨 **React Components** with full CRUD interfaces
-- 🌙 **Dark Mode Theme** with glassmorphism effects
+- **Natural language to full-stack apps** -- Next.js + Prisma + Tailwind from a single prompt
+- **Self-healing builds** -- AI detects and auto-fixes build errors during generation
+- **Pre-flight validation** -- `helix preflight` catches blueprint issues before generation
+- **Theme engine** -- `--theme glassmorphism|professional|minimal|vibrant`
+- **API validation, rate limiting, pagination** -- built into every generated route
+- **Auto-generated test suites** -- Vitest tests included out of the box
+- **Docker support** -- `helix snapshot --docker` produces optimized multi-stage Dockerfiles
+- **Drift detection** -- `helix drift` shows what changed since generation
+- **Multi-page apps** -- PAGE DSL for multi-route applications
+- **Component library** -- `helix install` to pull reusable components
+- **Schema migrations** -- `helix evolve` to scan, suggest, and apply codebase changes
+- **Cost tracking** -- `helix cost` shows per-generation token usage and spend
+- **Flutter target** -- `helix spawn "..." --target flutter` for mobile apps
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
-### Installation
+### Install
 
 ```bash
 npm install -g helix-lang
 ```
 
-### Generate Your First App
+### Set up your API key
 
 ```bash
-helix spawn "A task manager with projects and deadlines"
+echo "OPENROUTER_API_KEY=sk-or-v1-..." > .env
 ```
 
-That's it. Open `localhost:3000` and you have a working app.
+### Generate an app
+
+```bash
+helix spawn "A project tracker with Tasks, Milestones, and Team Members"
+cd builds/a-project-tracker && npm run dev
+```
+
+### Verify your setup
+
+```bash
+helix doctor
+```
 
 ---
 
-## 📋 Commands
+## CLI Commands
 
 | Command | Description |
 |---------|-------------|
-| `helix spawn "prompt"` | Generate complete app from description |
-| `helix spawn "prompt" --context file.md` | Use constitution file for guidance |
-| `helix generate blueprint.helix` | Regenerate from existing blueprint |
-| `helix run` | Start the development server |
-| `helix new project-name` | Create empty Helix project |
+| `helix spawn <prompt>` | Generate a complete app from natural language |
+| `helix new <name>` | Scaffold an empty Helix project |
+| `helix generate <file.helix>` | Generate stack from an existing `.helix` blueprint |
+| `helix run` | Start the dev server |
+| `helix preview` | Hot-reload preview with `.helix` file watching |
+| `helix deploy` | Deploy to Vercel, Firebase, or Netlify |
+| `helix preflight <file>` | Validate a `.helix` blueprint before generation |
+| `helix evolve [action]` | Scan, suggest, or apply codebase fixes and migrations |
+| `helix drift [project]` | Detect manual changes since generation |
+| `helix snapshot [project]` | Generate Dockerfile and docker-compose.yml |
+| `helix install [component]` | Browse and install from the component library |
+| `helix cost` | Show AI token usage and cost for the session |
+| `helix doctor` | System health check (Node, API key, deps) |
+| `helix list` | List all generated projects |
+| `helix research <topic>` | Generate domain research context |
+| `helix draft <idea>` | AI-draft a `.helix` blueprint from an idea |
+| `helix build <file>` | Compile `.helix` to a React component |
+| `helix pipeline <topic> <idea>` | Full pipeline: research, draft, build |
+| `helix models` | List available AI models |
+| `helix plugins` | List registered generator plugins |
+
+### Key Flags for `spawn`
+
+```
+--target <platform>    web (default) or flutter
+--theme <theme>        glassmorphism, professional, minimal, vibrant
+--db <database>        postgres, mongodb, redis, or comma-separated
+--constitution <file>  Provide a constitution.md for design guidance
+--components <ids>     Include Helix Library components (comma-separated)
+--ai-context           Enable AI context layer with Redis
+--cache                Add Redis caching layer
+--dry-run              Preview what would be generated without writing files
+```
 
 ---
 
-## 🧬 The Helix DSL
+## .helix DSL
 
-Helix uses a simple blueprint language (`.helix` files):
+Helix blueprints use a declarative syntax with two core constructs: **STRAND** (data model) and **VIEW** (UI page).
 
 ```helix
-STRAND Agent {
+STRAND Contact {
   name: String
-  callsign: String
-  rank: String        // Rookie, Veteran, Elite
-  status: String      // Active, KIA
+  email: String
+  company: String
+  status: String    // Lead, Active, Churned
 }
 
-STRAND Mission {
-  codename: String
-  region: String
-  priority: String    // Alpha, Bravo, Omega
+STRAND Deal {
+  title: String
+  value: Float
+  stage: String     // Discovery, Proposal, Closed
+  contact: Contact
 }
 
 VIEW Dashboard {
-  list: Agent.all
-  list: Mission.all
+  list: Contact.all
+  list: Deal.all
+}
+
+VIEW DealPipeline {
+  list: Deal.where(stage: "Discovery")
+  list: Deal.where(stage: "Proposal")
+  list: Deal.where(stage: "Closed")
 }
 ```
 
-**Strand** = Data model → Prisma schema + API route + TypeScript interface  
-**View** = UI component → React page with forms and lists
+Each **STRAND** generates a Prisma model, full CRUD API routes, and a TypeScript interface. Each **VIEW** generates a React page with forms, lists, and delete confirmations.
 
 ---
 
-## 🎯 Key Features
-
-### Multi-Strand Dashboards
-Define multiple data types → Get multiple sections, each with its own Add/List/Delete UI.
-
-```bash
-helix spawn "A CRM with Contacts, Companies, and Deals"
-# → Dashboard with 3 sections, 3 Add buttons, 3 data lists
-```
-
-### CRUD-by-Default
-Every app includes data mutation capabilities:
-- ➕ Add buttons with modal forms
-- ✏️ Inline editing support
-- 🗑️ Delete with confirmation
-
-### Constitution Support
-Influence generation with context files:
-```bash
-helix spawn "..." --context "my-design-system.md"
-```
-
-### Dark Mode Tactical Theme
-Premium "Deep Void" aesthetic:
-- Gradient backgrounds
-- Glassmorphism effects
-- Translucent dark inputs
-- Amber focus accents
-
----
-
-## 🛠️ Technology Stack
+## Technology Stack
 
 | Layer | Technology |
 |-------|------------|
-| Framework | Next.js 16+ (App Router) |
+| Framework | Next.js (App Router) |
 | Language | TypeScript |
-| Database | SQLite + Prisma ORM |
+| Database | SQLite + Prisma ORM (Postgres/Mongo optional) |
 | Styling | Tailwind CSS |
-| AI | OpenRouter (Claude 3.5 Sonnet) |
+| Testing | Vitest |
+| AI | OpenRouter (Claude Sonnet) |
+| Containers | Docker (multi-stage builds) |
 
 ---
 
-## 📦 Example Prompts
+## Example Prompts
 
 ```bash
-# Project Management
-helix spawn "A project tracker with Tasks, Milestones, and Team Members"
-
-# Inventory System
 helix spawn "A warehouse inventory with Products, Locations, and Stock Movements"
-
-# Game Development
-helix spawn "A tactical command system with Agents, Missions, and Intel"
-
-# Education
 helix spawn "A course manager with Students, Courses, and Assignments"
+helix spawn "An expense tracker for small businesses" --theme professional
+helix spawn "A fitness app with Workouts and Exercises" --target flutter
+helix spawn "A CRM with Contacts, Companies, and Deals" --db postgres
 ```
 
 ---
 
-## ⚡ Helix vs Traditional Tools
-
-| Aspect | Traditional | Helix |
-|--------|-------------|-------|
-| Output | Empty boilerplate | Working app |
-| Setup time | Hours | ~60 seconds |
-| Database | Manual config | Auto-generated |
-| API routes | Manual coding | Auto-generated |
-| UI components | Manual coding | Auto-generated |
-| Multi-model | Manual wiring | Automatic |
-
----
-
-## 📖 Environment Setup
-
-Create a `.env` file with your API key:
-
-```env
-OPENROUTER_API_KEY=your_key_here
-```
-
----
-
-## 🧬 Version
-
-**v4.2** - Multi-strand dashboards, dark mode inputs, CRUD-by-default
-
----
-
-## 📜 License
+## License
 
 MIT
 

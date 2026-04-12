@@ -1,5 +1,5 @@
 /**
- * Helix Self-Healing Cortex v10.0
+ * Helix Self-Healing Cortex v11.0
  * Automatic error detection, retry, and repair for AI-generated code
  */
 

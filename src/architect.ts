@@ -1,7 +1,7 @@
 /**
  * Helix Architect - The Interviewer
  * Converts vague user prompts into rigorous .helix specification files
- * v2.0 - Now with context-aware drafting via OpenRouter
+ * v11.0 - Now with context-aware drafting via OpenRouter
  */
 
 import chalk from "chalk";

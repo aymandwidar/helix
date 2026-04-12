@@ -1,0 +1,29 @@
+{
+    "name": "auth-flow",
+    "version": "1.0.0",
+    "description": "Complete authentication flow with login, registration, session middleware, and NextAuth configuration",
+    "author": "AD AI Engine",
+    "category": "auth",
+    "dependencies": [
+        "next-auth",
+        "@prisma/client",
+        "bcrypt",
+        "zod"
+    ],
+    "files": {
+        "schema": "schema.prisma",
+        "api": [
+            "app/api/auth/login/route.ts",
+            "app/api/auth/register/route.ts",
+            "app/api/auth/[...nextauth]/route.ts"
+        ],
+        "components": [
+            "components/auth/LoginForm.tsx",
+            "components/auth/RegisterForm.tsx",
+            "components/auth/AuthMiddleware.tsx",
+            "components/auth/nextauth-config.ts"
+        ]
+    },
+    "schema": "schema.prisma",
+    "instructions": "1. Install dependencies: npm install next-auth @prisma/client bcrypt zod\n2. Add NEXTAUTH_SECRET and NEXTAUTH_URL to .env\n3. Run npx prisma db push to create User/Session tables\n4. Wrap your app with SessionProvider from next-auth/react\n5. Use AuthMiddleware in API routes to protect endpoints"
+}

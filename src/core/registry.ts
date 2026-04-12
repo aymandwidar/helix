@@ -1,5 +1,5 @@
 /**
- * Helix Plugin Registry v10.0
+ * Helix Plugin Registry v11.0
  * Dynamic discovery and loading of generator plugins
  */
 

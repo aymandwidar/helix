@@ -15,7 +15,7 @@ class ArchitectView extends StatefulWidget {
 class _ArchitectViewState extends State<ArchitectView> {
   int _selectedTabIndex = 0; // 0: Code, 1: Brain, 2: Lab
   final List<String> _logs = [
-    "[SYSTEM] Helix v10.0 Engine Ready...",
+    "[SYSTEM] Helix v11.0 Engine Ready...",
     "[INFO] Connected to Supabase Cluster",
     "[INFO] OpenRouter API: Active (Model: Llama-3-70b)",
   ];

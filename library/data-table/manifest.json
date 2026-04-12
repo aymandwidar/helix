@@ -1,0 +1,20 @@
+{
+    "name": "data-table",
+    "version": "1.0.0",
+    "description": "Full-featured data table with sorting, pagination, search, column visibility, CSV export, and bulk actions",
+    "author": "AD AI Engine",
+    "category": "data",
+    "dependencies": [],
+    "files": {
+        "components": [
+            "components/table/DataTable.tsx",
+            "components/table/SearchFilter.tsx",
+            "components/table/ColumnToggle.tsx",
+            "components/table/ExportCSV.tsx",
+            "components/table/BulkActions.tsx"
+        ],
+        "api": []
+    },
+    "schema": null,
+    "instructions": "1. Import DataTable and pass your columns and data\n2. DataTable integrates SearchFilter, ColumnToggle, ExportCSV, and BulkActions automatically\n3. Define columns with { key, label, sortable?, render? }\n4. Provide onBulkDelete callback for bulk delete functionality"
+}

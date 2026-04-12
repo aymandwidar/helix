@@ -1,5 +1,5 @@
 /**
- * Helix Core Types v10.0
+ * Helix Core Types v11.0
  * Type definitions for the Helix Development Platform
  */
 

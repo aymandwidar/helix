@@ -1,6 +1,6 @@
 /**
  * Helix Language - Type Definitions and System Prompts
- * v2.0 - With Deep Research Capabilities
+ * v11.0 - With Deep Research Capabilities
  */
 
 // ============================================================================
@@ -10,10 +10,32 @@
 export const HELIX_SYNTAX_GUIDE = `
 HELIX SYNTAX RULES:
 1. 'strand Name {}' defines a stateful entity.
-2. 'field name: Type' defines data structure.
-3. 'strategy Name: Action -> Fallback' defines error handling.
-4. 'view Name {}' defines UI.
-5. 'theme: Glassmorphism' is the standard design token.
+2. 'field name: Type' defines data structure. Types: String, Int, Float, Boolean, DateTime.
+3. 'relation name: OtherStrand' defines a belongs-to relationship (foreign key).
+4. 'relation name: OtherStrand[]' defines a has-many relationship.
+5. 'strategy Name: Action -> Fallback' defines error handling.
+6. 'view Name {}' defines UI layout.
+7. 'theme: ThemeName' in a view selects the visual theme.
+   Available themes: Glassmorphism (default), Professional, Minimal, Vibrant.
+   Example: theme: Professional
+
+EXAMPLE:
+strand Customer {
+  field name: String
+  field email: String
+  relation orders: Order[]
+}
+
+strand Order {
+  field total: Float
+  field status: String
+  relation customer: Customer
+}
+
+view OrderBoard {
+  list: Order.all()
+  theme: Professional
+}
 `;
 
 // ============================================================================

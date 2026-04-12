@@ -1,0 +1,19 @@
+{
+    "name": "dashboard-analytics",
+    "version": "1.0.0",
+    "description": "Analytics dashboard with stats cards, line charts, activity feed, and summary grid",
+    "author": "AD AI Engine",
+    "category": "dashboard",
+    "dependencies": [],
+    "files": {
+        "components": [
+            "components/dashboard/StatsCard.tsx",
+            "components/dashboard/LineChart.tsx",
+            "components/dashboard/ActivityFeed.tsx",
+            "components/dashboard/SummaryGrid.tsx"
+        ],
+        "api": []
+    },
+    "schema": null,
+    "instructions": "1. Import components into your dashboard page\n2. Pass data props to each component\n3. Use SummaryGrid as the layout wrapper for StatsCards\n4. LineChart accepts an array of { label, value } data points\n5. ActivityFeed accepts an array of activity items with timestamp, user, and action"
+}

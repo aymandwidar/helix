@@ -1,0 +1,21 @@
+{
+    "name": "file-upload",
+    "version": "1.0.0",
+    "description": "Drag-and-drop file upload with preview, progress tracking, and server-side handling",
+    "author": "AD AI Engine",
+    "category": "media",
+    "dependencies": [],
+    "files": {
+        "components": [
+            "components/upload/DropZone.tsx",
+            "components/upload/FilePreview.tsx",
+            "components/upload/UploadProgress.tsx",
+            "components/upload/fileStorage.ts"
+        ],
+        "api": [
+            "app/api/upload/route.ts"
+        ]
+    },
+    "schema": null,
+    "instructions": "1. Import DropZone into your page for drag-and-drop uploads\n2. DropZone handles file selection, previews, and progress internally\n3. The API route at /api/upload stores files to the configured directory\n4. Customize fileStorage.ts for S3/cloud storage integration\n5. Set MAX_FILE_SIZE and ALLOWED_TYPES in the DropZone props"
+}

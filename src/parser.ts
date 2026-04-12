@@ -8,9 +8,16 @@ export interface HelixField {
     constraints?: string[];
 }
 
+export interface HelixRelation {
+    name: string;
+    target: string;
+    isMany: boolean;
+}
+
 export interface HelixStrand {
     name: string;
     fields: HelixField[];
+    relations: HelixRelation[];
     strategies: HelixStrategy[];
 }
 
@@ -25,10 +32,26 @@ export interface HelixView {
     properties: Record<string, string>;
 }
 
+export interface HelixPage {
+    name: string;
+    route: string;
+    layout?: string;
+    strands: string[];
+}
+
 export interface HelixAST {
     strands: HelixStrand[];
     views: HelixView[];
     strategies: HelixStrategy[];
+    pages: HelixPage[];
+}
+
+/**
+ * Convert PascalCase model name to camelCase for Prisma client accessor.
+ * e.g., "MaintenanceLog" -> "maintenanceLog", "Vehicle" -> "vehicle"
+ */
+function toPrismaAccessor(name: string): string {
+    return name.charAt(0).toLowerCase() + name.slice(1);
 }
 
 /**
@@ -39,6 +62,7 @@ export function parseHelix(content: string): HelixAST {
         strands: [],
         views: [],
         strategies: [],
+        pages: [],
     };
 
     // Remove comments
@@ -55,36 +79,52 @@ export function parseHelix(content: string): HelixAST {
         const strandName = match[1];
         const strandBody = match[2];
 
-        const strand: HelixStrand = {
-            name: strandName,
-            fields: [],
-            strategies: [],
-        };
+        try {
+            const strand: HelixStrand = {
+                name: strandName,
+                fields: [],
+                relations: [],
+                strategies: [],
+            };
 
-        // Parse fields
-        const fieldRegex = /field\s+(\w+)\s*:\s*([^\n]+)/g;
-        let fieldMatch;
-        while ((fieldMatch = fieldRegex.exec(strandBody)) !== null) {
-            const fieldName = fieldMatch[1];
-            const fieldType = fieldMatch[2].trim();
+            // Parse fields
+            const fieldRegex = /field\s+(\w+)\s*:\s*([^\n]+)/g;
+            let fieldMatch;
+            while ((fieldMatch = fieldRegex.exec(strandBody)) !== null) {
+                const fieldName = fieldMatch[1];
+                const fieldType = fieldMatch[2].trim();
 
-            strand.fields.push({
-                name: fieldName,
-                type: parseFieldType(fieldType),
-            });
+                strand.fields.push({
+                    name: fieldName,
+                    type: parseFieldType(fieldType),
+                });
+            }
+
+            // Parse relations: relation name: Target or relation name: Target[]
+            const relationRegex = /relation\s+(\w+)\s*:\s*(\w+)(\[\])?\s*/g;
+            let relMatch;
+            while ((relMatch = relationRegex.exec(strandBody)) !== null) {
+                strand.relations.push({
+                    name: relMatch[1],
+                    target: relMatch[2],
+                    isMany: !!relMatch[3],
+                });
+            }
+
+            // Parse strategies within strand
+            const strategyRegex = /strategy\s+(\w+)\s*:\s*([^\n]+)/g;
+            let stratMatch;
+            while ((stratMatch = strategyRegex.exec(strandBody)) !== null) {
+                strand.strategies.push({
+                    name: stratMatch[1],
+                    action: stratMatch[2].trim(),
+                });
+            }
+
+            ast.strands.push(strand);
+        } catch (err) {
+            console.error(`Error parsing strand "${strandName}": ${err instanceof Error ? err.message : String(err)}`);
         }
-
-        // Parse strategies within strand
-        const strategyRegex = /strategy\s+(\w+)\s*:\s*([^\n]+)/g;
-        let stratMatch;
-        while ((stratMatch = strategyRegex.exec(strandBody)) !== null) {
-            strand.strategies.push({
-                name: stratMatch[1],
-                action: stratMatch[2].trim(),
-            });
-        }
-
-        ast.strands.push(strand);
     }
 
     // Parse views
@@ -115,6 +155,36 @@ export function parseHelix(content: string): HelixAST {
             name: match[1],
             action: match[2].trim(),
         });
+    }
+
+    // Parse pages: page Dashboard { route: /dashboard, layout: sidebar, strands: [User, Task] }
+    const pageRegex = /page\s+(\w+)\s*\{([^}]+)\}/g;
+    while ((match = pageRegex.exec(cleanContent)) !== null) {
+        const pageName = match[1];
+        const pageBody = match[2];
+
+        const page: HelixPage = {
+            name: pageName,
+            route: `/${pageName.toLowerCase()}`,
+            strands: [],
+        };
+
+        const routeMatch = pageBody.match(/route\s*:\s*([^\n,]+)/);
+        if (routeMatch) page.route = routeMatch[1].trim();
+
+        const layoutMatch = pageBody.match(/layout\s*:\s*([^\n,]+)/);
+        if (layoutMatch) page.layout = layoutMatch[1].trim();
+
+        const strandsMatch = pageBody.match(/strands\s*:\s*\[([^\]]+)\]/);
+        if (strandsMatch) {
+            page.strands = strandsMatch[1].split(',').map(s => s.trim()).filter(Boolean);
+        }
+
+        ast.pages.push(page);
+    }
+
+    if (ast.strands.length === 0) {
+        console.warn('⚠️  Warning: No strands found in blueprint. Check your .helix syntax.');
     }
 
     return ast;
@@ -159,7 +229,7 @@ function parseFieldType(typeStr: string): string {
  * Generate Prisma schema from AST
  */
 export function generatePrismaSchema(ast: HelixAST): string {
-    let schema = `// Generated by Helix v3.0
+    let schema = `// Generated by Helix v11.0
 // This is your Prisma schema file
 
 generator client {
@@ -172,6 +242,9 @@ datasource db {
 }
 
 `;
+
+    // Build a lookup of all strand names for relation validation
+    const strandNames = new Set(ast.strands.map(s => s.name));
 
     for (const strand of ast.strands) {
         schema += `model ${strand.name} {\n`;
@@ -187,6 +260,21 @@ datasource db {
             schema += `  ${field.name} ${prismaType}${isOptional}${defaultValue}\n`;
         }
 
+        // Generate relation fields
+        for (const rel of strand.relations) {
+            if (!strandNames.has(rel.target)) continue; // skip invalid targets
+
+            if (rel.isMany) {
+                // has-many: just the relation array, no FK on this side
+                schema += `  ${rel.name} ${rel.target}[]\n`;
+            } else {
+                // belongs-to: FK field + relation
+                const fkName = `${rel.name}Id`;
+                schema += `  ${fkName} String?\n`;
+                schema += `  ${rel.name} ${rel.target}? @relation(fields: [${fkName}], references: [id])\n`;
+            }
+        }
+
         schema += `}\n\n`;
     }
 
@@ -200,91 +288,201 @@ function getDefaultValue(type: string): string {
 
 /**
  * Generate API route handler from strand
+ * v11.0 - With input validation, pagination, rate limiting, error handling
  */
 export function generateAPIRoute(strand: HelixStrand): string {
     const modelName = strand.name;
-    const lowerName = modelName.toLowerCase();
+    const prismaName = toPrismaAccessor(modelName);
 
-    return `// Generated by Helix v3.0
+    // Build include clause for relations
+    const relations = strand.relations || [];
+    const hasRelations = relations.length > 0;
+    const includeClause = hasRelations
+        ? `\n      include: { ${relations.map(r => `${r.name}: true`).join(', ')} },`
+        : '';
+    const includeOnCreate = hasRelations
+        ? `\n      include: { ${relations.map(r => `${r.name}: true`).join(', ')} },`
+        : '';
+
+    // Build validation rules from fields
+    const validationRules = strand.fields.map(f => {
+        if (f.type === 'String') return `    if (body.${f.name} !== undefined && typeof body.${f.name} !== 'string') errors.push('${f.name} must be a string');`;
+        if (f.type === 'Int') return `    if (body.${f.name} !== undefined && (typeof body.${f.name} !== 'number' || !Number.isInteger(body.${f.name}))) errors.push('${f.name} must be an integer');`;
+        if (f.type === 'Float') return `    if (body.${f.name} !== undefined && typeof body.${f.name} !== 'number') errors.push('${f.name} must be a number');`;
+        if (f.type === 'Boolean') return `    if (body.${f.name} !== undefined && typeof body.${f.name} !== 'boolean') errors.push('${f.name} must be a boolean');`;
+        return `    // ${f.name}: ${f.type}`;
+    }).join('\n');
+
+    // Required fields check (first 3 string fields)
+    const requiredChecks = strand.fields
+        .filter(f => f.type === 'String')
+        .slice(0, 3)
+        .map(f => `    if (!body.${f.name} || (typeof body.${f.name} === 'string' && body.${f.name}.trim() === '')) errors.push('${f.name} is required');`)
+        .join('\n');
+
+    // Sanitize string fields (trim + max length)
+    const sanitizeFields = strand.fields.map(f => {
+        if (f.type === 'String') return `      ${f.name}: typeof body.${f.name} === 'string' ? body.${f.name}.trim().slice(0, 2000) : body.${f.name},`;
+        return `      ${f.name}: body.${f.name},`;
+    }).join('\n');
+
+    return `// Generated by Helix v11.0 — Validation, Pagination, Rate Limiting
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-// GET all ${modelName}s
-export async function GET() {
+// ── Rate Limiting (in-memory, per-route) ─────────────────────────────
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT = 60;
+const RATE_WINDOW_MS = 60000;
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS });
+    return true;
+  }
+  if (entry.count >= RATE_LIMIT) return false;
+  entry.count++;
+  return true;
+}
+
+// Use x-real-ip (set by trusted reverse proxy) first, then x-forwarded-for, then fallback.
+// NOTE: For production behind a trusted proxy (nginx/caddy), configure the proxy to set x-real-ip.
+// In-memory rate limiting resets on restart; use Redis-backed limiter for production.
+function getClientIP(req: NextRequest): string {
+  return req.headers.get('x-real-ip')
+    || req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || 'unknown';
+}
+
+// ── Validation ───────────────────────────────────────────────────────
+function validate(body: Record<string, unknown>, isUpdate = false): string[] {
+  const errors: string[] = [];
+  if (!isUpdate) {
+${requiredChecks}
+  }
+${validationRules}
+  return errors;
+}
+
+function sanitize(body: Record<string, unknown>): Record<string, unknown> {
+  return {
+${sanitizeFields}
+  };
+}
+
+// ── GET (with pagination) ────────────────────────────────────────────
+export async function GET(request: NextRequest) {
   try {
-    const items = await prisma.${lowerName}.findMany({
-      orderBy: { createdAt: 'desc' },
+    const ip = getClientIP(request);
+    if (!checkRateLimit(ip)) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50')));
+    const skip = (page - 1) * limit;
+
+    const [items, total] = await Promise.all([
+      prisma.${prismaName}.findMany({
+        orderBy: { createdAt: 'desc' },${includeClause}
+        skip,
+        take: limit,
+      }),
+      prisma.${prismaName}.count(),
+    ]);
+
+    return NextResponse.json({
+      data: items,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     });
-    return NextResponse.json(items);
   } catch (error) {
-    console.error('Error fetching ${modelName}s:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch ${modelName}s' },
-      { status: 500 }
-    );
+    console.error('[${modelName}] GET error:', error);
+    return NextResponse.json({ error: 'Failed to fetch ${modelName}s' }, { status: 500 });
   }
 }
 
-// POST create new ${modelName}
+// ── POST ─────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const item = await prisma.${lowerName}.create({
-      data: body,
+    const ip = getClientIP(request);
+    if (!checkRateLimit(ip)) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+    }
+
+    let body: Record<string, unknown>;
+    try { body = await request.json(); }
+    catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+
+    const errors = validate(body);
+    if (errors.length > 0) {
+      return NextResponse.json({ error: 'Validation failed', details: errors }, { status: 400 });
+    }
+
+    const item = await prisma.${prismaName}.create({
+      data: sanitize(body) as any,${includeOnCreate}
     });
     return NextResponse.json(item, { status: 201 });
   } catch (error) {
-    console.error('Error creating ${modelName}:', error);
-    return NextResponse.json(
-      { error: 'Failed to create ${modelName}' },
-      { status: 500 }
-    );
+    console.error('[${modelName}] POST error:', error);
+    return NextResponse.json({ error: 'Failed to create ${modelName}' }, { status: 500 });
   }
 }
 
-// PUT update ${modelName}
+// ── PUT ──────────────────────────────────────────────────────────────
 export async function PUT(request: NextRequest) {
   try {
-    const body = await request.json();
+    const ip = getClientIP(request);
+    if (!checkRateLimit(ip)) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+    }
+
+    let body: Record<string, unknown>;
+    try { body = await request.json(); }
+    catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+
     const { id, ...data } = body;
-    
-    const item = await prisma.${lowerName}.update({
-      where: { id },
-      data,
+    if (!id || typeof id !== 'string') {
+      return NextResponse.json({ error: 'Valid ID is required' }, { status: 400 });
+    }
+
+    const errors = validate(data, true);
+    if (errors.length > 0) {
+      return NextResponse.json({ error: 'Validation failed', details: errors }, { status: 400 });
+    }
+
+    const item = await prisma.${prismaName}.update({
+      where: { id: id as string },
+      data: sanitize(data) as any,${includeClause}
     });
     return NextResponse.json(item);
-  } catch (error) {
-    console.error('Error updating ${modelName}:', error);
-    return NextResponse.json(
-      { error: 'Failed to update ${modelName}' },
-      { status: 500 }
-    );
+  } catch (error: any) {
+    if (error?.code === 'P2025') return NextResponse.json({ error: '${modelName} not found' }, { status: 404 });
+    console.error('[${modelName}] PUT error:', error);
+    return NextResponse.json({ error: 'Failed to update ${modelName}' }, { status: 500 });
   }
 }
 
-// DELETE ${modelName}
+// ── DELETE ───────────────────────────────────────────────────────────
 export async function DELETE(request: NextRequest) {
   try {
+    const ip = getClientIP(request);
+    if (!checkRateLimit(ip)) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    
-    if (!id) {
-      return NextResponse.json(
-        { error: 'ID is required' },
-        { status: 400 }
-      );
-    }
-    
-    await prisma.${lowerName}.delete({
-      where: { id },
-    });
+    if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 });
+
+    await prisma.${prismaName}.delete({ where: { id } });
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error deleting ${modelName}:', error);
-    return NextResponse.json(
-      { error: 'Failed to delete ${modelName}' },
-      { status: 500 }
-    );
+  } catch (error: any) {
+    if (error?.code === 'P2025') return NextResponse.json({ error: '${modelName} not found' }, { status: 404 });
+    console.error('[${modelName}] DELETE error:', error);
+    return NextResponse.json({ error: 'Failed to delete ${modelName}' }, { status: 500 });
   }
 }
 `;
@@ -292,40 +490,179 @@ export async function DELETE(request: NextRequest) {
 
 /**
  * Generate UI page component from view
+ * FIX: Uses camelCase for Prisma, adapts to model fields instead of hardcoding is_completed
  */
-export function generateUIPage(view: HelixView, strand: HelixStrand): string {
+export function generateUIPage(view: HelixView, strand: HelixStrand, allStrands?: HelixStrand[], themeClasses?: { primaryButton: string; secondaryButton: string; card: string; text: string; textMuted: string; heading: string; badge: string; statusColors: { success: string; warning: string; info: string } }): string {
     const viewName = view.name;
     const modelName = strand.name;
     const lowerName = modelName.toLowerCase();
 
-    const fields = strand.fields.map(f => f.name);
+    // Theme-aware classes with fallbacks to glassmorphism defaults
+    const tc = themeClasses || {
+        primaryButton: 'bg-indigo-600 hover:bg-indigo-500 text-white',
+        secondaryButton: 'bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300',
+        card: 'glass',
+        text: 'text-white',
+        textMuted: 'text-gray-400',
+        heading: 'text-white',
+        badge: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
+        statusColors: { success: '#10b981', warning: '#f59e0b', info: '#6366f1' },
+    };
 
-    return `// Generated by Helix v3.0
+    const fields = strand.fields.map(f => f.name);
+    const relations = strand.relations || [];
+    const belongsToRelations = relations.filter(r => !r.isMany);
+    const hasManyRelations = relations.filter(r => r.isMany);
+
+    const booleanField = strand.fields.find(f => f.type === 'Boolean' && (f.name.includes('complet') || f.name.includes('done') || f.name.includes('active') || f.name.includes('finished')));
+    const hasBooleanToggle = !!booleanField;
+    const toggleFieldName = booleanField?.name || '';
+
+    const toggleFunction = hasBooleanToggle ? `
+  const toggleItem = async (item: ${modelName}) => {
+    try {
+      await fetch('/api/${lowerName}', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: item.id,
+          ${toggleFieldName}: !item.${toggleFieldName}
+        }),
+      });
+      fetchItems();
+    } catch (error) {
+      console.error('Failed to update item:', error);
+    }
+  };` : '';
+
+    const toggleButton = hasBooleanToggle ? `
+              <button
+                onClick={() => toggleItem(item)}
+                className={\`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors \${
+                  item.${toggleFieldName}
+                    ? 'bg-green-500 border-green-500'
+                    : 'border-gray-400 hover:border-indigo-500'
+                }\`}
+              >
+                {item.${toggleFieldName} && <Check size={14} className="text-white" />}
+              </button>` : '';
+
+    const itemTextClass = hasBooleanToggle
+        ? `\`flex-1 ${tc.text} \${item.${toggleFieldName} ? 'line-through opacity-50' : ''}\``
+        : `"flex-1 ${tc.text}"`;
+
+    const lucideImports = hasBooleanToggle
+        ? `import { Plus, Trash2, Check, X } from 'lucide-react';`
+        : `import { Plus, Trash2 } from 'lucide-react';`;
+
+    // Generate relation interfaces and state for belongs-to dropdowns
+    const relatedInterfaces = belongsToRelations.map(rel => {
+        const targetStrand = allStrands?.find(s => s.name === rel.target);
+        const targetFirstField = targetStrand?.fields[0]?.name || 'name';
+        return `interface ${rel.target}Option { id: string; ${targetFirstField}: string; }`;
+    }).join('\n');
+
+    const relatedState = belongsToRelations.map(rel => {
+        return `  const [${rel.name}Options, set${capitalize(rel.name)}Options] = useState<${rel.target}Option[]>([]);`;
+    }).join('\n');
+
+    const relatedFetches = belongsToRelations.map(rel => {
+        const targetLower = rel.target.toLowerCase();
+        return `
+    fetch('/api/${targetLower}').then(r => r.json()).then(d => set${capitalize(rel.name)}Options(d.data || d)).catch(() => {});`;
+    }).join('');
+
+    const relatedFormState = belongsToRelations.map(rel => {
+        return `  const [selected${capitalize(rel.name)}, setSelected${capitalize(rel.name)}] = useState('');`;
+    }).join('\n');
+
+    const relatedFormFields = belongsToRelations.map(rel => {
+        const targetStrand = allStrands?.find(s => s.name === rel.target);
+        const targetFirstField = targetStrand?.fields[0]?.name || 'name';
+        return `
+          <select
+            value={selected${capitalize(rel.name)}}
+            onChange={(e) => setSelected${capitalize(rel.name)}(e.target.value)}
+            className="rounded-lg px-4 py-3 focus:outline-none focus:ring-2"
+          >
+            <option value="">Select ${rel.name}...</option>
+            {${rel.name}Options.map((opt) => (
+              <option key={opt.id} value={opt.id}>{opt.${targetFirstField}}</option>
+            ))}
+          </select>`;
+    }).join('');
+
+    const relatedCreateData = belongsToRelations.map(rel => {
+        return `${rel.name}Id: selected${capitalize(rel.name)} || undefined, `;
+    }).join('');
+
+    const relatedResetState = belongsToRelations.map(rel => {
+        return `\n        setSelected${capitalize(rel.name)}('');`;
+    }).join('');
+
+    // Display related data in list items
+    const relatedDisplayBelongsTo = belongsToRelations.map(rel => {
+        const targetStrand = allStrands?.find(s => s.name === rel.target);
+        const targetFirstField = targetStrand?.fields[0]?.name || 'name';
+        return `
+              {item.${rel.name} && (
+                <span className="text-xs ${tc.badge} px-2 py-1 rounded">
+                  {item.${rel.name}.${targetFirstField}}
+                </span>
+              )}`;
+    }).join('');
+
+    const relatedDisplayHasMany = hasManyRelations.map(rel => {
+        return `
+              {item.${rel.name} && item.${rel.name}.length > 0 && (
+                <span className="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded">
+                  {item.${rel.name}.length} ${rel.name}
+                </span>
+              )}`;
+    }).join('');
+
+    // Build interface with relations
+    const relatedInterfaceFields = belongsToRelations.map(rel => {
+        const targetStrand = allStrands?.find(s => s.name === rel.target);
+        const targetFirstField = targetStrand?.fields[0]?.name || 'name';
+        return `  ${rel.name}Id?: string;\n  ${rel.name}?: { id: string; ${targetFirstField}: string };`;
+    }).join('\n');
+
+    const hasManyInterfaceFields = hasManyRelations.map(rel => {
+        return `  ${rel.name}?: { id: string }[];`;
+    }).join('\n');
+
+    return `// Generated by Helix v11.0
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Check, X } from 'lucide-react';
+${lucideImports}
 
 interface ${modelName} {
   id: string;
 ${strand.fields.map(f => `  ${f.name}: ${tsType(f.type)};`).join('\n')}
+${relatedInterfaceFields}
+${hasManyInterfaceFields}
   createdAt: string;
 }
+${relatedInterfaces}
 
 export default function ${viewName}Page() {
   const [items, setItems] = useState<${modelName}[]>([]);
   const [loading, setLoading] = useState(true);
   const [newItem, setNewItem] = useState('');
+${relatedState}
+${relatedFormState}
 
   useEffect(() => {
-    fetchItems();
+    fetchItems();${relatedFetches}
   }, []);
 
   const fetchItems = async () => {
     try {
       const res = await fetch('/api/${lowerName}');
-      const data = await res.json();
-      setItems(data);
+      const json = await res.json();
+      setItems(json.data || json);
     } catch (error) {
       console.error('Failed to fetch items:', error);
     } finally {
@@ -335,16 +672,16 @@ export default function ${viewName}Page() {
 
   const createItem = async () => {
     if (!newItem.trim()) return;
-    
+
     try {
       const res = await fetch('/api/${lowerName}', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ${fields[0]}: newItem }),
+        body: JSON.stringify({ ${fields[0]}: newItem, ${relatedCreateData}}),
       });
-      
+
       if (res.ok) {
-        setNewItem('');
+        setNewItem('');${relatedResetState}
         fetchItems();
       }
     } catch (error) {
@@ -360,49 +697,34 @@ export default function ${viewName}Page() {
       console.error('Failed to delete item:', error);
     }
   };
-
-  const toggleItem = async (item: ${modelName}) => {
-    try {
-      await fetch('/api/${lowerName}', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          id: item.id, 
-          ${fields.find(f => f.includes('complet') || f.includes('done')) || 'is_completed'}: !item.${fields.find(f => f.includes('complet') || f.includes('done')) || 'is_completed'}
-        }),
-      });
-      fetchItems();
-    } catch (error) {
-      console.error('Failed to update item:', error);
-    }
-  };
+${toggleFunction}
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black flex items-center justify-center">
-        <div className="text-white text-xl">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-xl">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black p-8">
+    <div className="min-h-screen p-8">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-4xl font-bold text-white mb-8">${viewName}</h1>
-        
+        <h1 className="text-4xl font-bold mb-8 ${tc.heading}">${viewName}</h1>
+
         {/* Add New Item */}
-        <div className="flex gap-4 mb-8">
+        <div className="flex gap-4 mb-8 flex-wrap">
           <input
             type="text"
             value={newItem}
             onChange={(e) => setNewItem(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && createItem()}
             placeholder="Add new ${lowerName}..."
-            className="flex-1 bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+            className="flex-1 min-w-[200px]"
+          />${relatedFormFields}
           <button
             onClick={createItem}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
+            className="${tc.primaryButton} px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
           >
             <Plus size={20} />
             Add
@@ -414,23 +736,14 @@ export default function ${viewName}Page() {
           {items.map((item) => (
             <div
               key={item.id}
-              className="bg-white/10 backdrop-blur-lg rounded-lg p-4 flex items-center gap-4 group hover:bg-white/15 transition-colors"
-            >
-              <button
-                onClick={() => toggleItem(item)}
-                className={\`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors \${
-                  item.${fields.find(f => f.includes('complet') || f.includes('done')) || 'is_completed'}
-                    ? 'bg-green-500 border-green-500'
-                    : 'border-gray-400 hover:border-indigo-500'
-                }\`}
-              >
-                {item.${fields.find(f => f.includes('complet') || f.includes('done')) || 'is_completed'} && <Check size={14} className="text-white" />}
-              </button>
-              
-              <span className={\`flex-1 text-white \${item.${fields.find(f => f.includes('complet') || f.includes('done')) || 'is_completed'} ? 'line-through opacity-50' : ''}\`}>
+              className="glass p-4 flex items-center gap-4 group hover:opacity-90 transition-all"
+            >${toggleButton}
+
+              <span className={${itemTextClass}}>
                 {item.${fields[0]}}
               </span>
-              
+${relatedDisplayBelongsTo}${relatedDisplayHasMany}
+
               <button
                 onClick={() => deleteItem(item.id)}
                 className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-opacity"
@@ -439,9 +752,9 @@ export default function ${viewName}Page() {
               </button>
             </div>
           ))}
-          
+
           {items.length === 0 && (
-            <div className="text-center text-gray-400 py-12">
+            <div className="text-center opacity-50 py-12 ${tc.textMuted}">
               No items yet. Add your first ${lowerName}!
             </div>
           )}
@@ -451,6 +764,10 @@ export default function ${viewName}Page() {
   );
 }
 `;
+}
+
+function capitalize(str: string): string {
+    return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 function tsType(helixType: string): string {

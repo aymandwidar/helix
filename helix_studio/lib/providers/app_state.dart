@@ -24,4 +24,30 @@ class AppState extends ChangeNotifier {
     _supabaseConnectionString = value;
     notifyListeners();
   }
+
+  String? _vercelToken;
+  String? get vercelToken => _vercelToken;
+
+  void setVercelToken(String value) {
+    _vercelToken = value;
+    notifyListeners();
+  }
+
+  // Target selection state (web or flutter)
+  String _selectedTarget = 'web'; // Default to web
+  String get selectedTarget => _selectedTarget;
+
+  void setTarget(String target) {
+    if (target != 'web' && target != 'flutter') {
+      debugPrint('⚠️ Invalid target: $target. Defaulting to web.');
+      _selectedTarget = 'web';
+    } else {
+      _selectedTarget = target;
+      debugPrint('🎯 Target updated to: $_selectedTarget');
+    }
+    notifyListeners();
+  }
+
+  // Getter for CLI-safe target (defensive programming)
+  String get cliTarget => _selectedTarget == 'flutter' ? 'flutter' : 'web';
 }

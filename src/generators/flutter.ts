@@ -1,5 +1,5 @@
 /**
- * Helix Flutter Generator v4.4
+ * Helix Flutter Generator v11.0
  * Generates Flutter mobile apps from natural language prompts
  * Supports:
  *   - local (in-memory) and Supabase (cloud) database modes

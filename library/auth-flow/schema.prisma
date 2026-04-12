@@ -1,0 +1,45 @@
+// Prisma Schema additions for auth-flow component
+// Merge into your existing schema.prisma
+
+model User {
+    id            String    @id @default(uuid())
+    email         String    @unique
+    passwordHash  String
+    name          String?
+    image         String?
+    emailVerified DateTime?
+    createdAt     DateTime  @default(now())
+    updatedAt     DateTime  @updatedAt
+    sessions      Session[]
+    accounts      Account[]
+}
+
+model Session {
+    id           String   @id @default(uuid())
+    userId       String
+    token        String   @unique
+    expiresAt    DateTime
+    createdAt    DateTime @default(now())
+    user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([token])
+    @@index([userId])
+}
+
+model Account {
+    id                String  @id @default(uuid())
+    userId            String
+    type              String
+    provider          String
+    providerAccountId String
+    refresh_token     String?
+    access_token      String?
+    expires_at        Int?
+    token_type        String?
+    scope             String?
+    id_token          String?
+    user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@unique([provider, providerAccountId])
+    @@index([userId])
+}

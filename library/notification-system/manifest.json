@@ -1,0 +1,20 @@
+{
+    "name": "notification-system",
+    "version": "1.0.0",
+    "description": "Complete notification system with toast messages, React context provider, SSE API route, and bell icon badge",
+    "author": "AD AI Engine",
+    "category": "notifications",
+    "dependencies": [],
+    "files": {
+        "components": [
+            "components/notifications/Toast.tsx",
+            "components/notifications/NotificationProvider.tsx",
+            "components/notifications/NotificationBell.tsx"
+        ],
+        "api": [
+            "app/api/notifications/route.ts"
+        ]
+    },
+    "schema": null,
+    "instructions": "1. Wrap your app with NotificationProvider\n2. Use the useNotifications() hook to show toasts: toast.success('Done!')\n3. Place NotificationBell in your header for the bell icon with badge count\n4. The SSE API route streams real-time notifications to connected clients\n5. Call addNotification() from the provider to push persistent notifications"
+}
