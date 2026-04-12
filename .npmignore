@@ -1,0 +1,44 @@
+# Generated apps
+builds/
+preview/
+fleet_command/
+fleet-commander/
+todo-app/
+a-*/
+
+# Flutter Studio (separate app)
+helix_studio/
+
+# Build artifacts
+build-a-flutter/
+
+# Server scripts
+*.sh
+
+# Dev files
+src/
+*.helix
+*.tsx
+TESTING.md
+.env
+.env.local
+
+# Blueprints
+hpo_research.md
+hpo_update.helix
+hpo_update.tsx
+
+# Git
+.git/
+.gitignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Backup files
+*.bak

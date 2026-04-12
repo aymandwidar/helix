@@ -76,8 +76,8 @@ const API_TIMEOUT_MS = 60_000;
 // OpenRouter API Configuration
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-// Ollama (Omen PC) Configuration
-const OLLAMA_URL = process.env.OLLAMA_URL || "http://192.168.4.31:11434";
+// Ollama (local) Configuration
+const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "qwen2.5-coder:7b";
 
 // Model defaults from environment - OpenClaw-aligned stack
