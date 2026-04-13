@@ -75,7 +75,7 @@ program
     .description("One-shot generation: Full app from natural language")
     .option("-t, --target <platform>", "Target: 'web' (Next.js) or 'flutter'", "web")
     .option("-d, --db <database>", "Database: 'postgres', 'mongodb', 'redis', or comma-separated")
-    .option("--theme <theme>", "UI theme: glassmorphism, professional, minimal, vibrant", "glassmorphism")
+    .option("--theme <theme>", "UI theme: glassmorphism, professional, minimal, vibrant, midnight, sunset", "glassmorphism")
     .option("--ai-context", "Enable AI context layer with Redis")
     .option("--cache", "Add Redis caching layer")
     .option("--no-constitution", "Bypass constitutional validation")

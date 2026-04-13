@@ -2,6 +2,7 @@ import { Deployer, DeployResult } from '../index';
 import chalk from 'chalk';
 import * as fs from 'fs-extra';
 import * as path from 'path';
+import { HelixDeployError } from '../../../errors/index.js';
 
 export class RailwayDeployer extends Deployer {
     private projectId?: string;
@@ -9,13 +10,14 @@ export class RailwayDeployer extends Deployer {
     async initialize(): Promise<void> {
         console.log(chalk.cyan('🚂 Initializing Railway deployment...'));
 
-        // Check for Railway CLI
         try {
             await this.runCommand('railway --version');
         } catch {
-            console.log(chalk.yellow('⚠️  Railway CLI not found'));
-            console.log(chalk.gray('Install: npm install -g @railway/cli'));
-            throw new Error('Railway CLI not installed');
+            throw new HelixDeployError(
+                'Railway CLI not installed',
+                'Install it with: npm install -g @railway/cli',
+                { platform: 'railway' },
+            );
         }
 
         // Check if project is linked
@@ -31,16 +33,16 @@ export class RailwayDeployer extends Deployer {
     async validateConfig(): Promise<boolean> {
         console.log(chalk.cyan('🔍 Validating Railway configuration...'));
 
-        // Check if logged in
         try {
             await this.runCommand('railway whoami');
         } catch {
-            console.log(chalk.red('❌ Not logged in to Railway'));
-            console.log(chalk.yellow('Run: railway login'));
-            return false;
+            throw new HelixDeployError(
+                'Not logged in to Railway',
+                'Run: railway login',
+                { platform: 'railway' },
+            );
         }
 
-        // linkproject if not linked
         if (!this.projectId) {
             console.log(chalk.yellow('⚠️  Project not linked to Railway'));
             console.log(chalk.gray('Linking project...'));
@@ -57,15 +59,15 @@ export class RailwayDeployer extends Deployer {
     async deploy(): Promise<DeployResult> {
         console.log(chalk.cyan('\n🚂 Deploying to Railway...'));
 
-        try {
-            const output = await this.runCommand('railway up --detach');
+        // Check if Prisma uses PostgreSQL and offer to provision
+        await this.provisionPostgresIfNeeded();
 
-            // Get deployment URL
+        try {
+            await this.runCommand('railway up --detach');
+
             const urlOutput = await this.runCommand('railway domain');
             const url = urlOutput.trim();
 
-            // Get deployment ID from status
-            const statusOutput = await this.runCommand('railway status');
             const deploymentId = new Date().getTime().toString();
 
             return {
@@ -75,13 +77,34 @@ export class RailwayDeployer extends Deployer {
                 deploymentId,
             };
         } catch (error: any) {
-            console.error(chalk.red('❌ Railway deployment failed'));
-            throw error;
+            throw new HelixDeployError(
+                `Railway deployment failed: ${error.message}`,
+                'Check railway logs with: railway logs',
+                { platform: 'railway' },
+            );
         }
     }
 
     async rollback(deploymentId?: string): Promise<void> {
-        console.log(chalk.yellow('⏮️  Railway rollback not directly supported'));
+        console.log(chalk.yellow('⏮️  Railway rollback not directly supported via CLI'));
         console.log(chalk.gray('Use Railway dashboard to rollback: https://railway.app'));
+    }
+
+    private async provisionPostgresIfNeeded(): Promise<void> {
+        const schemaPath = path.join(this.projectPath, 'prisma', 'schema.prisma');
+        if (!await fs.pathExists(schemaPath)) return;
+
+        const schema = await fs.readFile(schemaPath, 'utf-8');
+        if (!schema.includes('provider = "postgresql"')) return;
+
+        console.log(chalk.cyan('🐘 PostgreSQL detected — provisioning Railway Postgres addon...'));
+        try {
+            await this.runCommand('railway add --plugin postgresql');
+            console.log(chalk.green('  ✅ PostgreSQL addon provisioned'));
+            console.log(chalk.gray('  DATABASE_URL will be automatically set by Railway'));
+        } catch {
+            console.log(chalk.yellow('  ⚠️  Could not auto-provision PostgreSQL'));
+            console.log(chalk.gray('  Add it manually: railway add --plugin postgresql'));
+        }
     }
 }

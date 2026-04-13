@@ -89,7 +89,8 @@ export function validateUIConstitution(prompt: string, options: SpawnOptions): C
 
     // V2: Accept any valid theme — only flag if no theme at all
     const validThemes = ['deep-void', 'glassmorphism', 'glass', 'professional', 'pro', 'saas',
-        'business', 'clean', 'minimal', 'minimalist', 'simple', 'vibrant', 'colorful', 'social'];
+        'business', 'clean', 'minimal', 'minimalist', 'simple', 'vibrant', 'colorful', 'social',
+        'midnight', 'corporate', 'dashboard', 'darkblue', 'sunset', 'warm', 'creative', 'portfolio', 'orange'];
     const hasValidTheme = options.theme && validThemes.includes(options.theme.toLowerCase());
 
     if (!hasValidTheme) {

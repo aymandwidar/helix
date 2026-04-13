@@ -223,6 +223,107 @@ export const THEMES: Record<string, HelixTheme> = {
       statusColors: { success: '#10b981', warning: '#f59e0b', info: '#8b5cf6' },
     },
   },
+
+  midnight: {
+    name: 'Midnight',
+    description: 'Dark blue, cyan accent — corporate / dashboard apps',
+    css: {
+      themeVars: `@theme {
+  --color-primary: #06b6d4;
+  --color-primary-light: #22d3ee;
+  --color-surface: #0f172a;
+  --color-surface-alt: #1e293b;
+}`,
+      body: `body {
+  background: linear-gradient(180deg, #0f172a 0%, #020617 100%);
+  color: #e2e8f0;
+  min-height: 100vh;
+  font-family: system-ui, -apple-system, sans-serif;
+}`,
+      glass: `.glass {
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(6, 182, 212, 0.1);
+  border-radius: 0.75rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}`,
+      inputs: `input, select, textarea {
+  background: rgba(30, 41, 59, 0.8) !important;
+  border: 1px solid rgba(6, 182, 212, 0.2) !important;
+  color: #e2e8f0 !important;
+  border-radius: 0.375rem;
+  padding: 0.75rem;
+}`,
+      inputFocus: `input:focus, select:focus, textarea:focus {
+  outline: none !important;
+  border-color: #06b6d4 !important;
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2) !important;
+}`,
+      inputPlaceholder: `input::placeholder, textarea::placeholder {
+  color: #64748b;
+}`,
+    },
+    componentClasses: {
+      primaryButton: 'bg-cyan-600 hover:bg-cyan-500 text-white',
+      secondaryButton: 'bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300',
+      card: 'glass',
+      text: 'text-slate-200',
+      textMuted: 'text-slate-400',
+      heading: 'text-white',
+      badge: 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20',
+      statusColors: { success: '#10b981', warning: '#f59e0b', info: '#06b6d4' },
+    },
+  },
+
+  sunset: {
+    name: 'Sunset',
+    description: 'Warm gradient, orange accent — creative / portfolio apps',
+    css: {
+      themeVars: `@theme {
+  --color-primary: #f97316;
+  --color-primary-light: #fb923c;
+  --color-accent: #e11d48;
+}`,
+      body: `body {
+  background: linear-gradient(135deg, #1c1917 0%, #292524 40%, #1c1917 100%);
+  color: #fafaf9;
+  min-height: 100vh;
+  font-family: system-ui, -apple-system, sans-serif;
+}`,
+      glass: `.glass {
+  background: rgba(41, 37, 36, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(249, 115, 22, 0.12);
+  border-radius: 0.75rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}`,
+      inputs: `input, select, textarea {
+  background: rgba(41, 37, 36, 0.8) !important;
+  border: 1px solid rgba(249, 115, 22, 0.2) !important;
+  color: #fafaf9 !important;
+  border-radius: 0.375rem;
+  padding: 0.75rem;
+}`,
+      inputFocus: `input:focus, select:focus, textarea:focus {
+  outline: none !important;
+  border-color: #f97316 !important;
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.2) !important;
+}`,
+      inputPlaceholder: `input::placeholder, textarea::placeholder {
+  color: #78716c;
+}`,
+    },
+    componentClasses: {
+      primaryButton: 'bg-gradient-to-r from-orange-500 to-rose-600 hover:from-orange-600 hover:to-rose-700 text-white',
+      secondaryButton: 'bg-stone-800 hover:bg-stone-700 border border-stone-600 text-stone-300',
+      card: 'glass',
+      text: 'text-stone-100',
+      textMuted: 'text-stone-400',
+      heading: 'text-white',
+      badge: 'bg-orange-500/10 text-orange-400 border border-orange-500/20',
+      statusColors: { success: '#22c55e', warning: '#f97316', info: '#e11d48' },
+    },
+  },
 };
 
 /**
@@ -253,6 +354,15 @@ export function resolveTheme(themeName?: string): HelixTheme {
     'social': 'vibrant',
     'gradient': 'vibrant',
     'fun': 'vibrant',
+    'midnight': 'midnight',
+    'corporate': 'midnight',
+    'dashboard': 'midnight',
+    'darkblue': 'midnight',
+    'sunset': 'sunset',
+    'warm': 'sunset',
+    'creative': 'sunset',
+    'portfolio': 'sunset',
+    'orange': 'sunset',
   };
 
   const resolved = aliases[normalized];

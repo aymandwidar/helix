@@ -1,5 +1,8 @@
 import { Deployer, DeployResult } from '../index';
 import chalk from 'chalk';
+import * as fs from 'fs-extra';
+import * as path from 'path';
+import { HelixDeployError } from '../../../errors/index.js';
 
 export class FlyDeployer extends Deployer {
     private appName?: string;
@@ -7,13 +10,14 @@ export class FlyDeployer extends Deployer {
     async initialize(): Promise<void> {
         console.log(chalk.cyan('🪰 Initializing Fly.io deployment...'));
 
-        // Check for Fly CLI
         try {
             await this.runCommand('fly version');
         } catch {
-            console.log(chalk.red('❌ Fly CLI not found'));
-            console.log(chalk.yellow('Install: https://fly.io/docs/hands-on/install-flyctl/'));
-            throw new Error('Fly CLI not installed');
+            throw new HelixDeployError(
+                'Fly CLI not installed',
+                'Install it from: https://fly.io/docs/hands-on/install-flyctl/',
+                { platform: 'fly' },
+            );
         }
 
         console.log(chalk.green('✅ Fly.io initialized'));
@@ -29,6 +33,15 @@ export class FlyDeployer extends Deployer {
             await this.runCommand('fly launch --no-deploy');
         }
 
+        // Extract app name
+        try {
+            const flyToml = await fs.readFile(path.join(this.projectPath, 'fly.toml'), 'utf-8');
+            const appMatch = flyToml.match(/app\s*=\s*"([^"]+)"/);
+            if (appMatch) this.appName = appMatch[1];
+        } catch {
+            // Non-fatal
+        }
+
         console.log(chalk.green('✅ Configuration valid'));
         return true;
     }
@@ -36,13 +49,15 @@ export class FlyDeployer extends Deployer {
     async deploy(): Promise<DeployResult> {
         console.log(chalk.cyan('\n🪰 Deploying to Fly.io...'));
 
-        try {
-            const output = await this.runCommand('fly deploy');
+        // Check if Prisma uses PostgreSQL and offer to provision
+        await this.provisionPostgresIfNeeded();
 
-            // Get app URL
+        try {
+            await this.runCommand('fly deploy');
+
             const statusOutput = await this.runCommand('fly status');
             const urlMatch = statusOutput.match(/https:\/\/[^\s]+/);
-            const url = urlMatch ? urlMatch[0] : '';
+            const url = urlMatch ? urlMatch[0] : this.appName ? `https://${this.appName}.fly.dev` : '';
 
             const deploymentId = new Date().getTime().toString();
 
@@ -53,19 +68,44 @@ export class FlyDeployer extends Deployer {
                 deploymentId,
             };
         } catch (error: any) {
-            console.error(chalk.red('❌ Fly.io deployment failed'));
-            throw error;
+            throw new HelixDeployError(
+                `Fly.io deployment failed: ${error.message}`,
+                'Check logs with: fly logs',
+                { platform: 'fly' },
+            );
         }
     }
 
     async rollback(deploymentId?: string): Promise<void> {
         console.log(chalk.yellow('⏮️  Rolling back Fly.io deployment...'));
-
-        // Fly uses version numbers for rollback
         if (deploymentId) {
             await this.runCommand(`fly releases rollback ${deploymentId}`);
         } else {
             await this.runCommand('fly releases rollback');
+        }
+    }
+
+    private async provisionPostgresIfNeeded(): Promise<void> {
+        const schemaPath = path.join(this.projectPath, 'prisma', 'schema.prisma');
+        if (!await fs.pathExists(schemaPath)) return;
+
+        const schema = await fs.readFile(schemaPath, 'utf-8');
+        if (!schema.includes('provider = "postgresql"')) return;
+
+        console.log(chalk.cyan('🐘 PostgreSQL detected — creating Fly Postgres cluster...'));
+        try {
+            const pgName = this.appName ? `${this.appName}-db` : 'helix-db';
+            await this.runCommand(`fly postgres create --name ${pgName} --region sjc --vm-size shared-cpu-1x`);
+            console.log(chalk.green(`  ✅ Postgres cluster "${pgName}" created`));
+
+            // Attach to app
+            if (this.appName) {
+                await this.runCommand(`fly postgres attach ${pgName} --app ${this.appName}`);
+                console.log(chalk.green('  ✅ Postgres attached — DATABASE_URL set as secret'));
+            }
+        } catch {
+            console.log(chalk.yellow('  ⚠️  Could not auto-provision PostgreSQL'));
+            console.log(chalk.gray('  Create manually: fly postgres create --name mydb'));
         }
     }
 }
