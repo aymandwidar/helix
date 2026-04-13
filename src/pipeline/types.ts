@@ -13,6 +13,7 @@ export interface PipelineContext {
   options: SpawnOptions;
   constitution?: string;
   connectionString?: string;
+  dbProvider: string;  // 'sqlite' | 'postgres' | 'supabase'
   ast?: HelixAST;
   blueprint?: string;
   activeThemeName?: string;

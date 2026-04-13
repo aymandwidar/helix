@@ -112,7 +112,7 @@ program
             console.log(chalk.white("\n  Would generate:"));
             console.log(chalk.gray("    • Next.js project scaffold"));
             console.log(chalk.gray("    • AI-generated .helix blueprint from prompt"));
-            console.log(chalk.gray("    • Prisma schema + SQLite database"));
+            console.log(chalk.gray(`    • Prisma schema + ${options.db === 'postgres' ? 'PostgreSQL' : options.db === 'supabase' ? 'Supabase (PostgreSQL)' : 'SQLite'} database`));
             console.log(chalk.gray("    • API routes with validation, rate limiting, pagination"));
             console.log(chalk.gray("    • React UI pages with theme applied"));
             console.log(chalk.gray("    • globals.css with theme CSS"));

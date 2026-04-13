@@ -36,7 +36,7 @@ export async function database(ctx: PipelineContext): Promise<void> {
 
   let attempts = 0;
   let lastError = '';
-  let currentSchema = generatePrismaSchema(ast);
+  let currentSchema = generatePrismaSchema(ast, ctx.dbProvider);
 
   while (attempts < MAX_RETRY_ATTEMPTS) {
     attempts++;

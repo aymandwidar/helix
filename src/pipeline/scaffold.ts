@@ -49,13 +49,14 @@ export async function scaffold(ctx: PipelineContext): Promise<void> {
 
   const prismaDir = path.join(ctx.projectPath, 'prisma');
   await fs.ensureDir(prismaDir);
+  const prismaProvider = ctx.dbProvider === 'postgres' || ctx.dbProvider === 'supabase' ? 'postgresql' : 'sqlite';
   await fs.writeFile(path.join(prismaDir, 'schema.prisma'), `// Helix Generated Prisma Schema
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "${prismaProvider}"
   url      = env("DATABASE_URL")
 }
 `);
@@ -116,11 +117,21 @@ const MASTER_ENV = path.join(HELIX_ROOT, '.env');
 async function writeEnvFile(ctx: PipelineContext): Promise<void> {
   let masterEnvContent = '';
   if (fs.existsSync(MASTER_ENV)) masterEnvContent = await fs.readFile(MASTER_ENV, 'utf-8');
+
+  let dbUrl = 'file:./dev.db';
+  if (ctx.connectionString) {
+    dbUrl = ctx.connectionString;
+  } else if (ctx.dbProvider === 'postgres') {
+    dbUrl = 'postgresql://postgres:postgres@localhost:5432/' + ctx.projectName + '?schema=public';
+  } else if (ctx.dbProvider === 'supabase') {
+    dbUrl = 'postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres';
+  }
+
   const projectEnv = `# Helix Clean Factory - Project Environment
 # Cloned from master .env at ${new Date().toISOString()}
 ${masterEnvContent}
 # Project-specific
-DATABASE_URL="file:./dev.db"
+DATABASE_URL="${dbUrl}"
 NEXT_PUBLIC_APP_NAME="${ctx.projectName}"
 `;
   await fs.writeFile(path.join(ctx.projectPath, '.env'), projectEnv);

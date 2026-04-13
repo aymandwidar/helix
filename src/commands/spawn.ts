@@ -67,6 +67,12 @@ export async function spawnApp(
 
   console.log(chalk.cyan(`📂 Clean Factory: builds/${projectName}/\n`));
 
+  // Determine database provider
+  const dbProvider = connectionString ? 'supabase'
+    : (options.db === 'postgres' || options.db === 'postgresql') ? 'postgres'
+    : options.db === 'supabase' ? 'supabase'
+    : 'sqlite';
+
   // Build pipeline context
   const ctx: PipelineContext = {
     prompt,
@@ -76,6 +82,7 @@ export async function spawnApp(
     options,
     constitution,
     connectionString,
+    dbProvider,
   };
 
   try {
