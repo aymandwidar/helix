@@ -526,83 +526,171 @@ program
         console.log(chalk.cyan("\n🩺 Helix Doctor — System Health Check\n"));
 
         let issues = 0;
+        let warnings = 0;
+
+        // ── Runtime ──────────────────────────────────────────────
+        console.log(chalk.white("  Runtime"));
 
         // Check Node.js version
         const nodeVersion = process.version;
         const major = parseInt(nodeVersion.slice(1).split('.')[0]);
         if (major >= 18) {
-            console.log(chalk.green(`  ✅ Node.js ${nodeVersion}`));
+            console.log(chalk.green(`    ✅ Node.js ${nodeVersion}`));
         } else {
-            console.log(chalk.red(`  ❌ Node.js ${nodeVersion} — requires >= 18`));
+            console.log(chalk.red(`    ❌ Node.js ${nodeVersion} — requires >= 18`));
             issues++;
-        }
-
-        // Check API key
-        if (process.env.OPENROUTER_API_KEY) {
-            const key = process.env.OPENROUTER_API_KEY;
-            console.log(chalk.green(`  ✅ OPENROUTER_API_KEY configured (${key.substring(0, 12)}...)`));
-        } else {
-            console.log(chalk.red("  ❌ OPENROUTER_API_KEY not set"));
-            issues++;
-        }
-
-        // Check .env file
-        const envPath = path.resolve(__dirname, "..", "..", ".env");
-        if (fs.existsSync(envPath)) {
-            console.log(chalk.green(`  ✅ .env file found`));
-        } else {
-            console.log(chalk.yellow("  ⚠️  No .env file found (using environment variables)"));
-        }
-
-        // Check builds directory
-        const buildsDir = path.resolve(__dirname, "..", "..", "builds");
-        if (fs.existsSync(buildsDir)) {
-            const projects = fs.readdirSync(buildsDir, { withFileTypes: true })
-                .filter((d: fs.Dirent) => d.isDirectory());
-            console.log(chalk.green(`  ✅ Builds directory: ${projects.length} project(s)`));
-        } else {
-            console.log(chalk.gray("  ℹ️  No builds directory yet (run 'helix spawn' to create one)"));
         }
 
         // Check npm
         try {
             const { stdout } = await import("execa").then(m => m.default("npm", ["--version"]));
-            console.log(chalk.green(`  ✅ npm v${stdout.trim()}`));
+            console.log(chalk.green(`    ✅ npm v${stdout.trim()}`));
         } catch {
-            console.log(chalk.red("  ❌ npm not found"));
+            console.log(chalk.red("    ❌ npm not found"));
             issues++;
         }
 
         // Check npx (for prisma, create-next-app)
         try {
             const { stdout } = await import("execa").then(m => m.default("npx", ["--version"]));
-            console.log(chalk.green(`  ✅ npx v${stdout.trim()}`));
+            console.log(chalk.green(`    ✅ npx v${stdout.trim()}`));
         } catch {
-            console.log(chalk.red("  ❌ npx not found"));
+            console.log(chalk.red("    ❌ npx not found"));
             issues++;
         }
 
-        // Check disk space (basic)
+        // Check git
+        try {
+            const { stdout } = await import("execa").then(m => m.default("git", ["--version"]));
+            console.log(chalk.green(`    ✅ ${stdout.trim()}`));
+        } catch {
+            console.log(chalk.yellow("    ⚠️  git not found (optional, needed for version control)"));
+            warnings++;
+        }
+
+        // ── AI Configuration ─────────────────────────────────────
+        console.log(chalk.white("\n  AI Configuration"));
+
+        // Check .env file
+        const envPath = path.resolve(__dirname, "..", "..", ".env");
+        if (fs.existsSync(envPath)) {
+            console.log(chalk.green(`    ✅ .env file found`));
+        } else {
+            console.log(chalk.yellow("    ⚠️  No .env file found (using environment variables)"));
+            warnings++;
+        }
+
+        // Check API key
+        if (process.env.OPENROUTER_API_KEY) {
+            const key = process.env.OPENROUTER_API_KEY;
+            console.log(chalk.green(`    ✅ OPENROUTER_API_KEY (${key.substring(0, 12)}...)`));
+
+            // Validate API key with a test call
+            try {
+                const response = await fetch("https://openrouter.ai/api/v1/models", {
+                    headers: { "Authorization": `Bearer ${key}` },
+                });
+                if (response.ok) {
+                    console.log(chalk.green("    ✅ OpenRouter API key is valid"));
+                } else {
+                    console.log(chalk.red(`    ❌ OpenRouter API key rejected (HTTP ${response.status})`));
+                    issues++;
+                }
+            } catch {
+                console.log(chalk.yellow("    ⚠️  Could not validate API key (network error)"));
+                warnings++;
+            }
+        } else {
+            console.log(chalk.red("    ❌ OPENROUTER_API_KEY not set"));
+            console.log(chalk.gray("       Set it in .env or export OPENROUTER_API_KEY=sk-or-..."));
+            issues++;
+        }
+
+        // Check Ollama (optional local model)
+        try {
+            const ollamaResponse = await fetch("http://localhost:11434/api/tags", { signal: AbortSignal.timeout(3000) });
+            if (ollamaResponse.ok) {
+                const data = await ollamaResponse.json() as { models?: Array<{ name: string }> };
+                const modelCount = data.models?.length || 0;
+                console.log(chalk.green(`    ✅ Ollama running (${modelCount} model${modelCount !== 1 ? 's' : ''} available)`));
+            } else {
+                console.log(chalk.gray("    ℹ️  Ollama not responding (optional — for local AI)"));
+            }
+        } catch {
+            console.log(chalk.gray("    ℹ️  Ollama not running (optional — for local AI)"));
+        }
+
+        // ── Deploy CLIs ──────────────────────────────────────────
+        console.log(chalk.white("\n  Deploy Tools"));
+
+        // Check Vercel CLI
+        try {
+            const { stdout } = await import("execa").then(m => m.default("vercel", ["--version"]));
+            console.log(chalk.green(`    ✅ Vercel CLI v${stdout.trim()}`));
+        } catch {
+            console.log(chalk.gray("    ℹ️  Vercel CLI not installed (optional — npm i -g vercel)"));
+        }
+
+        // Check Railway CLI
+        try {
+            const { stdout } = await import("execa").then(m => m.default("railway", ["version"]));
+            console.log(chalk.green(`    ✅ Railway CLI ${stdout.trim()}`));
+        } catch {
+            console.log(chalk.gray("    ℹ️  Railway CLI not installed (optional)"));
+        }
+
+        // Check Docker
+        try {
+            const { stdout } = await import("execa").then(m => m.default("docker", ["--version"]));
+            console.log(chalk.green(`    ✅ ${stdout.trim().split(',')[0]}`));
+        } catch {
+            console.log(chalk.gray("    ℹ️  Docker not installed (optional — for containerized builds)"));
+        }
+
+        // ── Project State ────────────────────────────────────────
+        console.log(chalk.white("\n  Project State"));
+
+        // Check builds directory
+        const buildsDir = path.resolve(__dirname, "..", "..", "builds");
+        if (fs.existsSync(buildsDir)) {
+            const projects = fs.readdirSync(buildsDir, { withFileTypes: true })
+                .filter((d: fs.Dirent) => d.isDirectory());
+            console.log(chalk.green(`    ✅ Builds directory: ${projects.length} project(s)`));
+            if (projects.length > 0) {
+                for (const p of projects.slice(0, 5)) {
+                    console.log(chalk.gray(`       → ${p.name}`));
+                }
+                if (projects.length > 5) {
+                    console.log(chalk.gray(`       ... and ${projects.length - 5} more`));
+                }
+            }
+        } else {
+            console.log(chalk.gray("    ℹ️  No builds directory yet (run 'helix spawn' to create one)"));
+        }
+
+        // Check disk space
         try {
             const { stdout } = await import("execa").then(m => m.default("df", ["-h", "."]));
             const lines = stdout.split('\n');
             if (lines.length > 1) {
                 const parts = lines[1].split(/\s+/);
                 const available = parts[3];
-                console.log(chalk.green(`  ✅ Disk space available: ${available}`));
+                console.log(chalk.green(`    ✅ Disk space available: ${available}`));
             }
         } catch {
-            console.log(chalk.gray("  ℹ️  Could not check disk space"));
+            // Windows: try wmic or just skip
+            console.log(chalk.gray("    ℹ️  Could not check disk space"));
         }
 
-        // Summary
+        // ── Summary ──────────────────────────────────────────────
         console.log('');
-        if (issues === 0) {
-            console.log(chalk.green("  🎉 All checks passed! Helix is ready to go."));
+        if (issues === 0 && warnings === 0) {
+            console.log(chalk.green("  🎉 All checks passed! Helix is ready to go.\n"));
+        } else if (issues === 0) {
+            console.log(chalk.green(`  ✅ Ready to go (${warnings} optional warning${warnings !== 1 ? 's' : ''}).\n`));
         } else {
-            console.log(chalk.red(`  ⚠️  ${issues} issue(s) found. Fix them above and run 'helix doctor' again.`));
+            console.log(chalk.red(`  ⚠️  ${issues} issue(s) found. Fix them above and run 'helix doctor' again.\n`));
         }
-        console.log('');
     });
 
 // ============================================================================
