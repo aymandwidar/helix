@@ -48,6 +48,10 @@ import { listTemplates, initFromTemplate } from "../commands/init";
 // Import web dashboard
 import { startWebDashboard } from "../commands/web";
 
+// Import collaboration
+import { startCollaborationServer } from "../commands/collaborate/server";
+import { joinCollaborationSession } from "../commands/collaborate/client";
+
 // Import v11.0 command modules (deploy & platform)
 import { deploy } from "../commands/deploy";
 import { preview } from "../commands/preview";
@@ -59,7 +63,7 @@ import { evolveCodebase } from "../commands/evolve";
 const banner = `
 ${chalk.cyan("╦ ╦╔═╗╦  ╦═╗ ╦")}
 ${chalk.cyan("╠═╣║╣ ║  ║╔╩╦╝")}
-${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v12.1.0")}
+${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v13.0.0")}
 ${chalk.gray("AI-Native Development Platform")}
 ${chalk.gray("Generate • Preview • Deploy • Evolve")}
 `;
@@ -69,7 +73,7 @@ const program = new Command();
 program
     .name("helix")
     .description("Helix - AI-Native Development Platform")
-    .version("12.1.0")
+    .version("13.0.0")
     .addHelpText("before", banner);
 
 // ============================================================================
@@ -208,6 +212,35 @@ program
     .action(async (options: { port: string }) => {
         console.log(banner);
         await startWebDashboard(parseInt(options.port, 10));
+    });
+
+// ============================================================================
+// COLLABORATION
+// ============================================================================
+
+const collabCmd = program
+    .command("collab")
+    .description("Real-time collaboration between Helix users");
+
+collabCmd
+    .command("serve")
+    .description("Start a collaboration server that teammates can join")
+    .option("-p, --port <number>", "Port to listen on", "3001")
+    .option("-k, --key <string>", "API key required for clients to connect")
+    .action(async (options: { port: string; key?: string }) => {
+        console.log(banner);
+        startCollaborationServer(parseInt(options.port, 10), options.key);
+        process.on('SIGINT', () => { console.log(chalk.gray('\n\nShutting down…\n')); process.exit(0); });
+    });
+
+collabCmd
+    .command("join <url>")
+    .description("Join a collaboration session (e.g. ws://hostname:3001)")
+    .option("-k, --key <string>", "API key for authenticated servers")
+    .option("-d, --dir <path>", "Directory to watch for .helix changes", ".")
+    .action(async (url: string, options: { key?: string; dir?: string }) => {
+        console.log(banner);
+        joinCollaborationSession(url, options.key);
     });
 
 // ============================================================================
@@ -461,9 +494,32 @@ program
         await deploy(options.platform as DeploymentPlatform, options.token);
     });
 
+const pluginCmd = program
+    .command("plugin")
+    .description("Manage Helix generator plugins");
+
+pluginCmd
+    .command("list")
+    .description("List registered generator plugins")
+    .action(async () => {
+        console.log(banner);
+        const registry = getRegistry();
+        await registry.scanForPlugins();
+        registry.listPlugins();
+    });
+
+pluginCmd
+    .command("install <name>")
+    .description("Install a generator plugin from npm (e.g. helix-gen-expo)")
+    .action(async (name: string) => {
+        const registry = getRegistry();
+        await registry.installPlugin(name);
+    });
+
+// Keep old alias for backward compat
 program
     .command("plugins")
-    .description("List registered generator plugins")
+    .description("List registered generator plugins (alias: plugin list)")
     .action(async () => {
         console.log(banner);
         const registry = getRegistry();

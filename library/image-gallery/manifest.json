@@ -1,0 +1,11 @@
+{
+  "name": "image-gallery",
+  "title": "Image Gallery",
+  "description": "Responsive image grid with lightbox, keyboard navigation, and captions",
+  "version": "1.0.0",
+  "dependencies": [],
+  "files": [
+    "components/gallery/ImageGallery.tsx",
+    "components/gallery/Lightbox.tsx"
+  ]
+}

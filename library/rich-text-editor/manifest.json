@@ -1,0 +1,11 @@
+{
+  "name": "rich-text-editor",
+  "title": "Rich Text Editor",
+  "description": "WYSIWYG rich text editor with toolbar, markdown shortcuts, and HTML output",
+  "version": "1.0.0",
+  "dependencies": ["@tiptap/react", "@tiptap/pm", "@tiptap/starter-kit", "@tiptap/extension-placeholder", "@tiptap/extension-character-count"],
+  "files": [
+    "components/editor/RichTextEditor.tsx",
+    "components/editor/EditorToolbar.tsx"
+  ]
+}

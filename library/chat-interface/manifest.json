@@ -1,0 +1,13 @@
+{
+  "name": "chat-interface",
+  "title": "Chat Interface",
+  "description": "Real-time chat UI with message bubbles, timestamps, and typing indicators",
+  "version": "1.0.0",
+  "dependencies": ["socket.io-client"],
+  "files": [
+    "components/chat/ChatWindow.tsx",
+    "components/chat/MessageBubble.tsx",
+    "components/chat/TypingIndicator.tsx",
+    "app/api/chat/route.ts"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "helix-gen-expo",
+  "version": "1.0.0",
+  "description": "Helix generator plugin for Expo (React Native)",
+  "main": "index.js",
+  "helix": {
+    "target": "expo"
+  },
+  "keywords": ["helix-gen", "expo", "react-native"],
+  "license": "MIT"
+}

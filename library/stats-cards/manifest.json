@@ -1,0 +1,12 @@
+{
+  "name": "stats-cards",
+  "title": "Stats Cards",
+  "description": "Metric cards with sparklines, trend indicators, and period comparisons",
+  "version": "1.0.0",
+  "dependencies": ["recharts"],
+  "files": [
+    "components/stats/StatsGrid.tsx",
+    "components/stats/StatCard.tsx",
+    "components/stats/Sparkline.tsx"
+  ]
+}

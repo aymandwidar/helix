@@ -1,0 +1,12 @@
+{
+  "name": "settings-panel",
+  "title": "Settings Panel",
+  "description": "User settings UI with sections, toggle switches, and form fields",
+  "version": "1.0.0",
+  "dependencies": [],
+  "files": [
+    "components/settings/SettingsPanel.tsx",
+    "components/settings/SettingsSection.tsx",
+    "components/settings/ToggleSetting.tsx"
+  ]
+}

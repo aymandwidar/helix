@@ -1,0 +1,11 @@
+{
+  "name": "search-command",
+  "title": "Search Command Palette",
+  "description": "Cmd+K command palette with fuzzy search, keyboard navigation, and grouped results",
+  "version": "1.0.0",
+  "dependencies": [],
+  "files": [
+    "components/search/CommandPalette.tsx",
+    "components/search/useCommandPalette.ts"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "kanban-board",
+  "title": "Kanban Board",
+  "description": "Drag-and-drop kanban board with columns, cards, and status tracking",
+  "version": "1.0.0",
+  "dependencies": ["@hello-pangea/dnd"],
+  "files": [
+    "components/kanban/KanbanBoard.tsx",
+    "components/kanban/KanbanColumn.tsx",
+    "components/kanban/KanbanCard.tsx"
+  ]
+}

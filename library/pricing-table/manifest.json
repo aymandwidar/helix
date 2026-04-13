@@ -1,0 +1,11 @@
+{
+  "name": "pricing-table",
+  "title": "Pricing Table",
+  "description": "SaaS pricing cards with monthly/annual toggle, feature lists, and highlighted plans",
+  "version": "1.0.0",
+  "dependencies": [],
+  "files": [
+    "components/pricing/PricingTable.tsx",
+    "components/pricing/PricingCard.tsx"
+  ]
+}

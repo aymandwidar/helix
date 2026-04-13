@@ -22,17 +22,35 @@ export class CollaborationServer {
     private presence: Map<string, UserPresence> = new Map();
     private schemaHistory: CollaborationMessage[] = [];
 
-    constructor(port: number = 3001) {
+    private apiKey: string | undefined;
+
+    constructor(port: number = 3001, apiKey?: string) {
+        this.apiKey = apiKey;
         const server = http.createServer();
-        this.wss = new WebSocketServer({ server });
+        this.wss = new WebSocketServer({ server, verifyClient: this.verifyClient.bind(this) });
 
         this.wss.on('connection', (ws: WebSocket) => {
             this.handleConnection(ws);
         });
 
         server.listen(port, () => {
-            console.log(chalk.green(`\n🤝 Helix Collaboration Server running on port ${port}\n`));
+            console.log(chalk.green(`\n🤝 Helix Collaboration Server running on port ${port}`));
+            if (apiKey) {
+                console.log(chalk.gray(`   API key auth enabled — share your key with collaborators\n`));
+            } else {
+                console.log(chalk.yellow(`   ⚠️  No API key set — any client can connect. Use --key to protect.\n`));
+            }
         });
+    }
+
+    private verifyClient(info: { req: http.IncomingMessage }): boolean {
+        if (!this.apiKey) return true; // open server
+        const provided = info.req.headers['x-helix-api-key'];
+        if (provided !== this.apiKey) {
+            console.log(chalk.red(`❌ Rejected connection — invalid API key`));
+            return false;
+        }
+        return true;
     }
 
     private handleConnection(ws: WebSocket): void {
@@ -151,6 +169,6 @@ export class CollaborationServer {
     }
 }
 
-export function startCollaborationServer(port: number = 3001): CollaborationServer {
-    return new CollaborationServer(port);
+export function startCollaborationServer(port: number = 3001, apiKey?: string): CollaborationServer {
+    return new CollaborationServer(port, apiKey);
 }

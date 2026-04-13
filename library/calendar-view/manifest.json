@@ -1,0 +1,11 @@
+{
+  "name": "calendar-view",
+  "title": "Calendar View",
+  "description": "Monthly and weekly calendar with event display, navigation, and click-to-add",
+  "version": "1.0.0",
+  "dependencies": [],
+  "files": [
+    "components/calendar/CalendarView.tsx",
+    "components/calendar/CalendarDay.tsx"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "form-wizard",
+  "title": "Multi-Step Form Wizard",
+  "description": "Multi-step form with progress bar, step validation, and animated transitions",
+  "version": "1.0.0",
+  "dependencies": [],
+  "files": [
+    "components/wizard/FormWizard.tsx",
+    "components/wizard/WizardStep.tsx",
+    "components/wizard/WizardProgress.tsx"
+  ]
+}

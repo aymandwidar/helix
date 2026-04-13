@@ -88,37 +88,53 @@ export class PluginRegistry {
     }
 
     /**
-     * Register an external plugin
+     * Register an external plugin using require.resolve for reliable path resolution
      */
     private async registerExternalPlugin(
         name: string,
         version: string,
         projectPath: string
     ): Promise<void> {
-        const modulePath = path.join(projectPath, "node_modules", name);
-
-        if (!fs.existsSync(modulePath)) {
-            console.log(chalk.yellow(`⚠️  Plugin ${name} not found in node_modules`));
-            return;
-        }
-
         try {
+            // Use require.resolve to find the actual module path — handles symlinks,
+            // yarn PnP, and nested node_modules correctly
+            const resolvedEntry = require.resolve(name, { paths: [projectPath] });
+            const modulePath = path.dirname(resolvedEntry);
+
             // Read plugin's package.json to get target
             const pluginPkgPath = path.join(modulePath, "package.json");
-            const pluginPkg = await fs.readJSON(pluginPkgPath);
+            const pluginPkg = fs.existsSync(pluginPkgPath)
+                ? await fs.readJSON(pluginPkgPath)
+                : {};
             const target = pluginPkg.helix?.target || name.replace("helix-gen-", "");
 
             this.plugins.set(target, {
                 name,
                 target,
                 version,
-                modulePath,
+                modulePath: resolvedEntry,
                 isBuiltIn: false,
             });
 
             console.log(chalk.green(`✓ Plugin loaded: ${name} (target: ${target})`));
         } catch (error) {
             console.log(chalk.yellow(`⚠️  Could not load plugin ${name}: ${error}`));
+        }
+    }
+
+    /**
+     * Install a plugin by name (wraps npm install)
+     */
+    async installPlugin(name: string): Promise<void> {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const execa = require("execa");
+        console.log(chalk.cyan(`\n📦 Installing plugin: ${name}\n`));
+        try {
+            await execa("npm", ["install", name], { stdio: "inherit" });
+            console.log(chalk.green(`\n✅ Plugin installed: ${name}`));
+            console.log(chalk.gray(`   Run \`helix plugin list\` to verify.\n`));
+        } catch (err: any) {
+            console.error(chalk.red(`❌ Failed to install ${name}: ${err.message}`));
         }
     }
 
