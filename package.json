@@ -18,6 +18,8 @@
     "start": "node dist/bin/helix.js",
     "dev": "npx ts-node src/bin/helix.ts",
     "helix": "npx ts-node src/bin/helix.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -44,7 +46,6 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
     "@types/pg": "^8.16.0",
     "chalk": "^4.1.2",
     "commander": "^12.1.0",
@@ -61,6 +62,7 @@
     "@types/node": "^22.10.7",
     "@types/ws": "^8.18.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^4.1.4"
   }
 }

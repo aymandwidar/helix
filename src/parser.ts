@@ -1,50 +1,18 @@
 /**
- * Helix Parser - Parses .helix blueprint files into structured AST
+ * Helix Parser + Code Generation
+ *
+ * Parsing is handled by the new lexer/parser in ./parser/
+ * This module re-exports the parser and provides code generation functions.
  */
 
-export interface HelixField {
-    name: string;
-    type: string;
-    constraints?: string[];
-}
+// Re-export everything from the new parser module
+export { parseHelix, parseHelixDetailed } from './parser/index.js';
+export type {
+    HelixAST, HelixStrand, HelixField, HelixRelation, HelixStrategy,
+    HelixView, HelixPage, HelixEnum, HelixAuth, HelixDecorator, SourceLocation,
+} from './parser/index.js';
 
-export interface HelixRelation {
-    name: string;
-    target: string;
-    isMany: boolean;
-}
-
-export interface HelixStrand {
-    name: string;
-    fields: HelixField[];
-    relations: HelixRelation[];
-    strategies: HelixStrategy[];
-}
-
-export interface HelixStrategy {
-    name: string;
-    action: string;
-    condition?: string;
-}
-
-export interface HelixView {
-    name: string;
-    properties: Record<string, string>;
-}
-
-export interface HelixPage {
-    name: string;
-    route: string;
-    layout?: string;
-    strands: string[];
-}
-
-export interface HelixAST {
-    strands: HelixStrand[];
-    views: HelixView[];
-    strategies: HelixStrategy[];
-    pages: HelixPage[];
-}
+import type { HelixAST, HelixStrand, HelixField, HelixView } from './parser/index.js';
 
 /**
  * Convert PascalCase model name to camelCase for Prisma client accessor.
@@ -52,142 +20,6 @@ export interface HelixAST {
  */
 function toPrismaAccessor(name: string): string {
     return name.charAt(0).toLowerCase() + name.slice(1);
-}
-
-/**
- * Parse a .helix file content into an AST
- */
-export function parseHelix(content: string): HelixAST {
-    const ast: HelixAST = {
-        strands: [],
-        views: [],
-        strategies: [],
-        pages: [],
-    };
-
-    // Remove comments
-    const cleanContent = content
-        .split('\n')
-        .map(line => line.replace(/\/\/.*$/, '').trim())
-        .join('\n');
-
-    // Parse strands
-    const strandRegex = /strand\s+(\w+)\s*\{([^}]+)\}/g;
-    let match;
-
-    while ((match = strandRegex.exec(cleanContent)) !== null) {
-        const strandName = match[1];
-        const strandBody = match[2];
-
-        try {
-            const strand: HelixStrand = {
-                name: strandName,
-                fields: [],
-                relations: [],
-                strategies: [],
-            };
-
-            // Parse fields
-            const fieldRegex = /field\s+(\w+)\s*:\s*([^\n]+)/g;
-            let fieldMatch;
-            while ((fieldMatch = fieldRegex.exec(strandBody)) !== null) {
-                const fieldName = fieldMatch[1];
-                const fieldType = fieldMatch[2].trim();
-
-                strand.fields.push({
-                    name: fieldName,
-                    type: parseFieldType(fieldType),
-                });
-            }
-
-            // Parse relations: relation name: Target or relation name: Target[]
-            const relationRegex = /relation\s+(\w+)\s*:\s*(\w+)(\[\])?\s*/g;
-            let relMatch;
-            while ((relMatch = relationRegex.exec(strandBody)) !== null) {
-                strand.relations.push({
-                    name: relMatch[1],
-                    target: relMatch[2],
-                    isMany: !!relMatch[3],
-                });
-            }
-
-            // Parse strategies within strand
-            const strategyRegex = /strategy\s+(\w+)\s*:\s*([^\n]+)/g;
-            let stratMatch;
-            while ((stratMatch = strategyRegex.exec(strandBody)) !== null) {
-                strand.strategies.push({
-                    name: stratMatch[1],
-                    action: stratMatch[2].trim(),
-                });
-            }
-
-            ast.strands.push(strand);
-        } catch (err) {
-            console.error(`Error parsing strand "${strandName}": ${err instanceof Error ? err.message : String(err)}`);
-        }
-    }
-
-    // Parse views
-    const viewRegex = /view\s+(\w+)\s*\{([^}]+)\}/g;
-    while ((match = viewRegex.exec(cleanContent)) !== null) {
-        const viewName = match[1];
-        const viewBody = match[2];
-
-        const view: HelixView = {
-            name: viewName,
-            properties: {},
-        };
-
-        // Parse view properties
-        const propRegex = /(\w+)\s*:\s*([^\n]+)/g;
-        let propMatch;
-        while ((propMatch = propRegex.exec(viewBody)) !== null) {
-            view.properties[propMatch[1]] = propMatch[2].trim();
-        }
-
-        ast.views.push(view);
-    }
-
-    // Parse top-level strategies
-    const topStrategyRegex = /^strategy\s+(\w+)\s*:\s*(.+)$/gm;
-    while ((match = topStrategyRegex.exec(cleanContent)) !== null) {
-        ast.strategies.push({
-            name: match[1],
-            action: match[2].trim(),
-        });
-    }
-
-    // Parse pages: page Dashboard { route: /dashboard, layout: sidebar, strands: [User, Task] }
-    const pageRegex = /page\s+(\w+)\s*\{([^}]+)\}/g;
-    while ((match = pageRegex.exec(cleanContent)) !== null) {
-        const pageName = match[1];
-        const pageBody = match[2];
-
-        const page: HelixPage = {
-            name: pageName,
-            route: `/${pageName.toLowerCase()}`,
-            strands: [],
-        };
-
-        const routeMatch = pageBody.match(/route\s*:\s*([^\n,]+)/);
-        if (routeMatch) page.route = routeMatch[1].trim();
-
-        const layoutMatch = pageBody.match(/layout\s*:\s*([^\n,]+)/);
-        if (layoutMatch) page.layout = layoutMatch[1].trim();
-
-        const strandsMatch = pageBody.match(/strands\s*:\s*\[([^\]]+)\]/);
-        if (strandsMatch) {
-            page.strands = strandsMatch[1].split(',').map(s => s.trim()).filter(Boolean);
-        }
-
-        ast.pages.push(page);
-    }
-
-    if (ast.strands.length === 0) {
-        console.warn('⚠️  Warning: No strands found in blueprint. Check your .helix syntax.');
-    }
-
-    return ast;
 }
 
 /**
@@ -216,14 +48,6 @@ export function toPrismaType(helixType: string): string {
     return typeMap[helixType] || 'String';
 }
 
-/**
- * Parse field type and extract base type
- */
-function parseFieldType(typeStr: string): string {
-    // Remove constraints like (Limit: 3)
-    const baseType = typeStr.replace(/\([^)]*\)/g, '').trim();
-    return baseType;
-}
 
 /**
  * Generate Prisma schema from AST
