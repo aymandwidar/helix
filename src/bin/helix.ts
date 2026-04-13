@@ -63,7 +63,7 @@ const program = new Command();
 program
     .name("helix")
     .description("Helix - AI-Native Development Platform")
-    .version("11.0.0")
+    .version("12.0.0")
     .addHelpText("before", banner);
 
 // ============================================================================
