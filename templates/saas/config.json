@@ -1,0 +1,8 @@
+{
+  "name": "saas",
+  "title": "SaaS Starter",
+  "description": "Multi-tenant SaaS with auth, billing model, and dashboard",
+  "theme": "professional",
+  "db": "postgres",
+  "tags": ["saas", "auth", "billing"]
+}

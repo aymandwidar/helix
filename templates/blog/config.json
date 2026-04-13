@@ -1,0 +1,8 @@
+{
+  "name": "blog",
+  "title": "Blog",
+  "description": "Content platform with posts, comments, and categories",
+  "theme": "professional",
+  "db": "sqlite",
+  "tags": ["content", "cms"]
+}

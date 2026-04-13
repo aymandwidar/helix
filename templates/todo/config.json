@@ -1,0 +1,8 @@
+{
+  "name": "todo",
+  "title": "Todo App",
+  "description": "Simple task management with categories and priorities",
+  "theme": "minimal",
+  "db": "sqlite",
+  "tags": ["starter", "productivity"]
+}

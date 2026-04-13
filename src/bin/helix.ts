@@ -42,6 +42,12 @@ import { runDevServer } from "../commands/run";
 import { spawnApp } from "../commands/spawn";
 import { generateFlutterApp, regenerateFlutterDart } from "../generators/flutter";
 
+// Import template init
+import { listTemplates, initFromTemplate } from "../commands/init";
+
+// Import web dashboard
+import { startWebDashboard } from "../commands/web";
+
 // Import v11.0 command modules (deploy & platform)
 import { deploy } from "../commands/deploy";
 import { preview } from "../commands/preview";
@@ -53,7 +59,7 @@ import { evolveCodebase } from "../commands/evolve";
 const banner = `
 ${chalk.cyan("╦ ╦╔═╗╦  ╦═╗ ╦")}
 ${chalk.cyan("╠═╣║╣ ║  ║╔╩╦╝")}
-${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v11.0")}
+${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v12.1.0")}
 ${chalk.gray("AI-Native Development Platform")}
 ${chalk.gray("Generate • Preview • Deploy • Evolve")}
 `;
@@ -63,7 +69,7 @@ const program = new Command();
 program
     .name("helix")
     .description("Helix - AI-Native Development Platform")
-    .version("12.0.0")
+    .version("12.1.0")
     .addHelpText("before", banner);
 
 // ============================================================================
@@ -173,6 +179,35 @@ program
             console.log(chalk.cyan("🌐 Target: Next.js Web App"));
             await spawnApp(prompt, spawnOptions, constitutionContent);
         }
+    });
+
+// ============================================================================
+// TEMPLATE INIT
+// ============================================================================
+
+program
+    .command("init [template] [project-name]")
+    .description("Initialize from a template (run without args to list templates)")
+    .action(async (template?: string, projectName?: string) => {
+        console.log(banner);
+        if (!template) {
+            await listTemplates();
+        } else {
+            await initFromTemplate(template, projectName);
+        }
+    });
+
+// ============================================================================
+// WEB DASHBOARD
+// ============================================================================
+
+program
+    .command("web")
+    .description("Launch the browser-based Helix dashboard")
+    .option("-p, --port <number>", "Port to listen on", "4000")
+    .action(async (options: { port: string }) => {
+        console.log(banner);
+        await startWebDashboard(parseInt(options.port, 10));
     });
 
 // ============================================================================

@@ -1,0 +1,8 @@
+{
+  "name": "ecommerce",
+  "title": "E-Commerce",
+  "description": "Online store with products, orders, and cart management",
+  "theme": "glassmorphism",
+  "db": "postgres",
+  "tags": ["store", "payments", "auth"]
+}

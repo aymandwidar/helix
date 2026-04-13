@@ -1,11 +1,12 @@
 {
   "name": "helix-lang",
-  "version": "12.0.0",
+  "version": "12.1.0",
   "description": "Helix - AI-Native Development Platform with Full-Stack Generation, Preview & Deploy",
   "main": "dist/index.js",
   "files": [
     "dist/",
     "library/",
+    "templates/",
     "package.json",
     "README.md",
     "LICENSE"
