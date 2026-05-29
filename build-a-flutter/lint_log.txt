@@ -1,0 +1,45 @@
+
+> build-a-flutter@0.1.0 lint
+> eslint
+
+
+D:\AI Projects\Helix\build-a-flutter\src\app\addexpense\page.tsx
+  5:31  warning  'X' is defined but never used  @typescript-eslint/no-unused-vars
+
+D:\AI Projects\Helix\build-a-flutter\src\app\addservice\page.tsx
+  5:31  warning  'X' is defined but never used  @typescript-eslint/no-unused-vars
+
+D:\AI Projects\Helix\build-a-flutter\src\app\addvehicle\page.tsx
+  5:31  warning  'X' is defined but never used  @typescript-eslint/no-unused-vars
+
+D:\AI Projects\Helix\build-a-flutter\src\app\expensetracker\page.tsx
+  5:31  warning  'X' is defined but never used  @typescript-eslint/no-unused-vars
+
+D:\AI Projects\Helix\build-a-flutter\src\app\fleetdashboard\page.tsx
+  5:31  warning  'X' is defined but never used  @typescript-eslint/no-unused-vars
+
+D:\AI Projects\Helix\build-a-flutter\src\app\page.tsx
+  12:3   warning  'Tag' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                @typescript-eslint/no-unused-vars
+  13:3   warning  'FileText' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           @typescript-eslint/no-unused-vars
+  66:18  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\AI Projects\Helix\build-a-flutter\src\app\page.tsx:66:18
+  64 |
+  65 |   useEffect(() => {
+> 66 |     Promise.all([fetchExpenses(), fetchVehicles(), fetchServiceLogs()])
+     |                  ^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  67 |       .then(() => setLoading(false));
+  68 |   }, []);
+  69 |  react-hooks/set-state-in-effect
+
+D:\AI Projects\Helix\build-a-flutter\src\app\servicehistory\page.tsx
+  5:31  warning  'X' is defined but never used  @typescript-eslint/no-unused-vars
+
+Γ£û 9 problems (1 error, 8 warnings)
+

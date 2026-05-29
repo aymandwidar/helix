@@ -1,0 +1,25 @@
+
+> build-a-flutter@0.1.0 lint
+> eslint
+
+
+D:\AI Projects\Helix\build-a-flutter\src\app\addexpense\page.tsx
+  5:31  warning  'X' is defined but never used  @typescript-eslint/no-unused-vars
+
+D:\AI Projects\Helix\build-a-flutter\src\app\addservice\page.tsx
+  5:31  warning  'X' is defined but never used  @typescript-eslint/no-unused-vars
+
+D:\AI Projects\Helix\build-a-flutter\src\app\addvehicle\page.tsx
+  5:31  warning  'X' is defined but never used  @typescript-eslint/no-unused-vars
+
+D:\AI Projects\Helix\build-a-flutter\src\app\expensetracker\page.tsx
+  5:31  warning  'X' is defined but never used  @typescript-eslint/no-unused-vars
+
+D:\AI Projects\Helix\build-a-flutter\src\app\fleetdashboard\page.tsx
+  5:31  warning  'X' is defined but never used  @typescript-eslint/no-unused-vars
+
+D:\AI Projects\Helix\build-a-flutter\src\app\servicehistory\page.tsx
+  5:31  warning  'X' is defined but never used  @typescript-eslint/no-unused-vars
+
+Γ£û 6 problems (0 errors, 6 warnings)
+

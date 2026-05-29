@@ -1,0 +1,48 @@
+
+> build-a-flutter@0.1.0 build
+> next build
+
+ΓÜá Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of D:\AI Projects\Helix\package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * D:\AI Projects\Helix\build-a-flutter\package-lock.json
+
+Γû▓ Next.js 16.1.4 (Turbopack)
+- Environments: .env
+
+  Creating an optimized production build ...
+Error: Cannot apply unknown utility class `backdrop-blur-xl`. Are you using CSS modules or similar and missing `@reference`? https://tailwindcss.com/docs/functions-and-directives#reference-directive
+    [at onInvalidCandidate (D:\AI Projects\Helix\build-a-flutter\node_modules\tailwindcss\dist\lib.js:21:1314)]
+    [at Te (D:\AI Projects\Helix\build-a-flutter\node_modules\tailwindcss\dist\lib.js:16:36652)]
+    [at D:\AI Projects\Helix\build-a-flutter\node_modules\tailwindcss\dist\lib.js:21:355]
+    [at Rr (D:\AI Projects\Helix\build-a-flutter\node_modules\tailwindcss\dist\lib.js:3:1718)]
+    [at _ (D:\AI Projects\Helix\build-a-flutter\node_modules\tailwindcss\dist\lib.js:3:1377)]
+    [at $e (D:\AI Projects\Helix\build-a-flutter\node_modules\tailwindcss\dist\lib.js:21:172)]
+    [at un (D:\AI Projects\Helix\build-a-flutter\node_modules\tailwindcss\dist\lib.js:38:294)]
+    [at process.processTicksAndRejections (node:internal/process/task_queues:103:5)]
+    [at async cn (D:\AI Projects\Helix\build-a-flutter\node_modules\tailwindcss\dist\lib.js:38:631)]
+    [at async Xr (D:\AI Projects\Helix\build-a-flutter\node_modules\@tailwindcss\node\dist\index.js:10:3417)]
+
+> Build error occurred
+Error: Turbopack build failed with 1 errors:
+./build-a-flutter/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: tailwindcss: D:\AI Projects\Helix\build-a-flutter\src\app\globals.css:1:1: Cannot apply unknown utility class `backdrop-blur-xl`. Are you using CSS modules or similar and missing `@reference`? https://tailwindcss.com/docs/functions-and-directives#reference-directive
+    at Input.error (build-a-flutter/node_modules/postcss/lib/input.js:135:16) [D:\AI Projects\Helix\build-a-flutter\.next\build\chunks\dfb43_4ce682dd._.js:4651:22]
+    at Root.error (build-a-flutter/node_modules/postcss/lib/node.js:146:32) [D:\AI Projects\Helix\build-a-flutter\.next\build\chunks\dfb43_4ce682dd._.js:928:38]
+    [at Object.Once (D:\AI Projects\Helix\build-a-flutter\node_modules\@tailwindcss\postcss\dist\index.js:10:6911)]
+    [at process.processTicksAndRejections (node:internal/process/task_queues:103:5)]
+    at async LazyResult.runAsync (build-a-flutter/node_modules/postcss/lib/lazy-result.js:293:11) [D:\AI Projects\Helix\build-a-flutter\.next\build\chunks\dfb43_4ce682dd._.js:6206:21]
+    at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34) [D:\AI Projects\Helix\build-a-flutter\.next\build\chunks\[root-of-the-server]__1a2fe0c1._.js:146:36]
+    at async run (turbopack:///[turbopack-node]/ipc/evaluate.ts:92:23) [D:\AI Projects\Helix\build-a-flutter\.next\build\chunks\[root-of-the-server]__d9210d0b._.js:443:31]
+
+Import trace:
+  Client Component Browser:
+    ./build-a-flutter/src/app/globals.css [Client Component Browser]
+    ./build-a-flutter/src/app/layout.tsx [Server Component]
+
+
+    at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34) [D:\AI Projects\Helix\build-a-flutter\.next\build\chunks\[root-of-the-server]__1a2fe0c1._.js:146:36])
+    at async run (turbopack:///[turbopack-node]/ipc/evaluate.ts:92:23) [D:\AI Projects\Helix\build-a-flutter\.next\build\chunks\[root-of-the-server]__d9210d0b._.js:443:31])
