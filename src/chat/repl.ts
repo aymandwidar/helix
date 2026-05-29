@@ -48,6 +48,16 @@ const HELP_TEXT = `${chalk.cyan("Slash commands:")}
   ${chalk.bold("/perm")}        Show or edit permissions (e.g. /perm mode trusted)
   ${chalk.bold("/yolo")}        Switch to yolo mode (auto-approve everything) for this session
   ${chalk.bold("/manual")}      Switch to manual mode (ask for every tool call) for this session
+  ${chalk.bold("/audit")}       Run quality audit (a11y/perf/seo/security)
+  ${chalk.bold("/cost-predict")}    Estimate cost of the next agent turn
+  ${chalk.bold("/explain-diff")}    AI-explain the current git diff
+  ${chalk.bold("/review")}      AI code review of current diff
+  ${chalk.bold("/regression-guard")}  capture | check
+  ${chalk.bold("/compress")}    Summarize older messages to free up context
+  ${chalk.bold("/loop")}        /loop <N> <prompt> — run the agent N times
+  ${chalk.bold("/teach")}       Append a learned convention to HELIX.md
+  ${chalk.bold("/inherit")}     Merge another project's HELIX.md into this one
+  ${chalk.bold("/blocks")}      Toggle block (boxed) TUI output
 
 ${chalk.cyan("Inline routing:")}
   ${chalk.bold("@<server> <command>")}   Route directly to an MCP server (e.g. @memory search "prisma")
@@ -284,6 +294,146 @@ async function handleSlashCommand(line: string, ctx: SlashCtx): Promise<boolean>
         case "trusted": {
             ctx.permissions.mode = "trusted";
             ctx.display.info("Mode → trusted. Only sensitive tools (shell_exec, deploy_app, MCP) will prompt.");
+            return false;
+        }
+        case "audit": {
+            const { auditProject, formatAuditReport } = await import("../audit");
+            const categories = rest.length > 0 ? rest as any : undefined;
+            const report = auditProject({ cwd: ctx.context.cwd, categories });
+            ctx.display.raw(formatAuditReport(report) + "\n");
+            return false;
+        }
+        case "cost-predict":
+        case "costpredict": {
+            const { predictTurnCost, formatPrediction } = await import("../quality/cost_predict");
+            const prediction = predictTurnCost({ messages: ctx.context.messages() });
+            ctx.display.raw(formatPrediction(prediction) + "\n");
+            return false;
+        }
+        case "explain-diff":
+        case "explaindiff": {
+            try {
+                const { explainDiff } = await import("../quality/diff");
+                ctx.display.info("Asking AI to explain the diff...");
+                const text = await explainDiff({ cwd: ctx.context.cwd, range: rest[0] });
+                ctx.display.raw("\n" + text + "\n");
+            } catch (e: any) { ctx.display.error(e?.message || String(e)); }
+            return false;
+        }
+        case "review": {
+            try {
+                const { reviewDiff } = await import("../quality/diff");
+                ctx.display.info("Running AI review on the diff...");
+                const text = await reviewDiff({ cwd: ctx.context.cwd, range: rest[0] });
+                ctx.display.raw("\n" + text + "\n");
+            } catch (e: any) { ctx.display.error(e?.message || String(e)); }
+            return false;
+        }
+        case "regression-guard":
+        case "regressionguard": {
+            const action = rest[0] || "check";
+            const { captureBaseline, checkAgainstBaseline, formatRegressionDiff } = await import("../quality/regression");
+            try {
+                if (action === "capture") {
+                    const baseline = await captureBaseline({ cwd: ctx.context.cwd });
+                    ctx.display.info(`captured baseline (${baseline.files.length} files, validation=${baseline.validation.passed ? "passed" : "failed"})`);
+                } else {
+                    const result = await checkAgainstBaseline(ctx.context.cwd);
+                    ctx.display.raw(formatRegressionDiff(result.diff) + "\n");
+                }
+            } catch (e: any) { ctx.display.error(e?.message || String(e)); }
+            return false;
+        }
+        case "compress": {
+            try {
+                const { compressHistory } = await import("../quality/compress");
+                const keepN = rest[0] ? parseInt(rest[0], 10) || 8 : 8;
+                ctx.display.info("Compressing older messages...");
+                const result = await compressHistory(ctx.context.messages(), { keepLastN: keepN });
+                if (result.summarized === 0) {
+                    ctx.display.info("Nothing to compress yet (history is short).");
+                    return false;
+                }
+                // Replace history with compressed version
+                ctx.context.history.clear();
+                for (const m of result.messages) {
+                    if (m.role === "system") ctx.context.history.setSystem(typeof m.content === "string" ? m.content : "");
+                    else ctx.context.history.push(m);
+                }
+                ctx.display.info(`compressed ${result.summarized} message(s) into a summary`);
+            } catch (e: any) { ctx.display.error(e?.message || String(e)); }
+            return false;
+        }
+        case "loop": {
+            const n = parseInt(rest[0] || "0", 10);
+            const prompt = rest.slice(1).join(" ").trim();
+            if (!n || !prompt) {
+                ctx.display.warn("Usage: /loop <N> <prompt>");
+                return false;
+            }
+            try {
+                const { runLoop } = await import("../quality/loop");
+                ctx.display.info(`Looping ${n} time(s)...`);
+                await runLoop({
+                    iterations: n,
+                    prompt,
+                    registry: ctx.registry,
+                    context: ctx.context,
+                    checkpoints: ctx.checkpoints,
+                    display: ctx.display,
+                    permissions: ctx.permissions,
+                });
+            } catch (e: any) { ctx.display.error(e?.message || String(e)); }
+            return false;
+        }
+        case "teach": {
+            const lesson = rest.join(" ").trim();
+            if (!lesson) {
+                ctx.display.warn("Usage: /teach <lesson to remember>");
+                return false;
+            }
+            try {
+                const { teach } = await import("../quality/teach");
+                const r = teach({ cwd: ctx.context.cwd, lesson });
+                ctx.display.info(`saved to ${r.file}: "${r.appended}"`);
+                ctx.context.refresh();
+            } catch (e: any) { ctx.display.error(e?.message || String(e)); }
+            return false;
+        }
+        case "inherit": {
+            const source = rest[0];
+            if (!source) {
+                ctx.display.warn("Usage: /inherit <path-to-other-project-or-HELIX.md>");
+                return false;
+            }
+            try {
+                const { inherit } = await import("../quality/teach");
+                const r = inherit({ cwd: ctx.context.cwd, source, overwrite: rest.includes("--overwrite") });
+                ctx.display.info(`${r.merged ? "merged" : "wrote"} HELIX.md → ${r.dest}`);
+                ctx.context.refresh();
+            } catch (e: any) { ctx.display.error(e?.message || String(e)); }
+            return false;
+        }
+        case "blocks": {
+            const sub = rest[0] || "toggle";
+            const { blockDisplay } = await import("../quality/blocks");
+            // We mutate the slash ctx's display for the rest of the session
+            // by swapping it via a closure stored on `ctx.permissions` (rough,
+            // but simple: store the original display so we can toggle back).
+            const anyCtx = ctx as any;
+            if (sub === "off") {
+                if (anyCtx._originalDisplay) {
+                    Object.assign(ctx.display, anyCtx._originalDisplay);
+                    delete anyCtx._originalDisplay;
+                    ctx.display.info("blocks off");
+                } else {
+                    ctx.display.info("blocks already off");
+                }
+            } else {
+                if (!anyCtx._originalDisplay) anyCtx._originalDisplay = { ...ctx.display };
+                Object.assign(ctx.display, blockDisplay(ctx.display));
+                ctx.display.info("blocks on");
+            }
             return false;
         }
         default:

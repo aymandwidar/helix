@@ -63,7 +63,7 @@ import { evolveCodebase } from "../commands/evolve";
 const banner = `
 ${chalk.cyan("╦ ╦╔═╗╦  ╦═╗ ╦")}
 ${chalk.cyan("╠═╣║╣ ║  ║╔╩╦╝")}
-${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v15.1.0")}
+${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v15.2.0")}
 ${chalk.gray("AI-Native Development Platform")}
 ${chalk.gray("Generate • Chat • Preview • Deploy • Evolve")}
 `;
@@ -73,7 +73,7 @@ const program = new Command();
 program
     .name("helix")
     .description("Helix - AI-Native Development Platform")
-    .version("15.1.0")
+    .version("15.2.0")
     .addHelpText("before", banner);
 
 // ============================================================================
@@ -89,6 +89,7 @@ program
     .option("--ai-context", "Enable AI context layer with Redis")
     .option("--cache", "Add Redis caching layer")
     .option("--no-constitution", "Bypass constitutional validation")
+    .option("--production-grade", "Apply strict-quality policy and run a post-generation audit")
     .option("--components <ids>", "Helix Library component IDs (comma-separated)")
     .option("--constitution <file>", "Path to constitution.md file")
     .option("--ai <provider>", "AI provider (for Flutter): 'openrouter'")
@@ -181,8 +182,145 @@ program
             await generateFlutterApp(prompt, constitutionContent, options.db, options.ai);
         } else {
             console.log(chalk.cyan("🌐 Target: Next.js Web App"));
+            // --production-grade: prepend strict-quality policy to the prompt
+            let effectivePrompt = prompt;
+            if (options.productionGrade) {
+                const { PRODUCTION_GRADE_PROMPT_SUFFIX, runPostGenerateAudit } = await import("../quality/production_grade");
+                effectivePrompt = `${prompt}\n\n${PRODUCTION_GRADE_PROMPT_SUFFIX}`;
+                console.log(chalk.bold.magenta("🏭 Production-grade policy enabled"));
+                await spawnApp(effectivePrompt, spawnOptions, constitutionContent);
+
+                // Post-generation audit on the most recent build
+                const buildsDir = path.resolve(__dirname, "..", "..", "builds");
+                const projects = fs.existsSync(buildsDir)
+                    ? fs.readdirSync(buildsDir, { withFileTypes: true })
+                        .filter(d => d.isDirectory())
+                        .map(d => ({ name: d.name, mtime: fs.statSync(path.join(buildsDir, d.name)).mtime.getTime() }))
+                        .sort((a, b) => b.mtime - a.mtime)
+                    : [];
+                if (projects.length > 0) {
+                    const latest = path.join(buildsDir, projects[0].name);
+                    console.log(chalk.cyan(`\n🔬 Running post-generation audit on ${projects[0].name}...`));
+                    const audit = runPostGenerateAudit({ cwd: latest });
+                    console.log(audit.formattedReport);
+                    if (!audit.passed) {
+                        console.error(chalk.red(`\n❌ Production-grade audit failed: ${audit.blockingFindings} blocking finding(s).`));
+                        process.exit(1);
+                    }
+                }
+                return;
+            }
             await spawnApp(prompt, spawnOptions, constitutionContent);
         }
+    });
+
+// ============================================================================
+// V15.2 COMMANDS: Quality audits, regression guard, diff helpers
+// ============================================================================
+
+program
+    .command("audit [project]")
+    .description("Run quality audits (a11y, performance, SEO, security)")
+    .option("-p, --path <path>", "Project path")
+    .option("-c, --category <cat>", "Comma-separated subset: a11y,performance,seo,security")
+    .option("--json", "Emit JSON instead of human-readable output")
+    .action(async (project: string | undefined, options: { path?: string; category?: string; json?: boolean }) => {
+        if (!options.json) console.log(banner);
+        const cwd = options.path
+            ? path.resolve(options.path)
+            : project
+                ? path.resolve(__dirname, "..", "..", "builds", project)
+                : process.cwd();
+        const { auditProject, formatAuditReport } = await import("../audit");
+        const categories = options.category
+            ? options.category.split(",").map(s => s.trim()).filter(Boolean) as any
+            : undefined;
+        const report = auditProject({ cwd, categories });
+        if (options.json) {
+            process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+            return;
+        }
+        console.log(formatAuditReport(report));
+        // Exit non-zero when there are critical findings (CI-friendly)
+        if (report.summary.bySeverity.critical > 0) process.exit(1);
+    });
+
+program
+    .command("regression-guard [action]")
+    .description("Capture and check a regression baseline (file checksums + validation steps)")
+    .option("-p, --path <path>", "Project path", process.cwd())
+    .option("--note <text>", "Annotate the baseline")
+    .option("--skip-validation", "Don't run build/tests when capturing (faster, less reliable)")
+    .action(async (action: string | undefined, options: { path: string; note?: string; skipValidation?: boolean }) => {
+        console.log(banner);
+        const a = (action || "check").toLowerCase();
+        const { captureBaseline, checkAgainstBaseline, formatRegressionDiff } = await import("../quality/regression");
+        if (a === "capture") {
+            const baseline = await captureBaseline({ cwd: options.path, note: options.note, skipValidation: options.skipValidation });
+            console.log(chalk.green(`✅ Captured baseline (${baseline.files.length} files, validation=${baseline.validation.passed ? "passed" : "failed"})`));
+            console.log(chalk.gray(`   .helix/regression-baseline.json`));
+            return;
+        }
+        if (a === "check") {
+            const result = await checkAgainstBaseline(options.path);
+            if (!result.baseline) {
+                console.log(chalk.yellow("No baseline captured yet. Run: helix regression-guard capture"));
+                process.exit(2);
+            }
+            console.log(formatRegressionDiff(result.diff));
+            const failed = (result.diff?.newFailures?.length ?? 0) > 0;
+            process.exit(failed ? 1 : 0);
+        }
+        console.error(chalk.red(`Unknown action: ${a}. Use 'capture' or 'check'.`));
+        process.exit(1);
+    });
+
+program
+    .command("explain-diff")
+    .description("AI-explain the current git diff (staged → working → recent commit)")
+    .option("-r, --range <range>", "Git revision range (e.g. HEAD~3..HEAD or main...feature)")
+    .option("-m, --model <model>", "AI model to use")
+    .action(async (options: { range?: string; model?: string }) => {
+        console.log(banner);
+        if (!process.env.OPENROUTER_API_KEY) {
+            console.error(chalk.red("❌ OPENROUTER_API_KEY not found in environment"));
+            process.exit(1);
+        }
+        const { explainDiff } = await import("../quality/diff");
+        const text = await explainDiff({ range: options.range, model: options.model });
+        console.log("\n" + text + "\n");
+    });
+
+program
+    .command("review")
+    .description("AI code review of the current diff")
+    .option("-r, --range <range>", "Git revision range")
+    .option("-m, --model <model>", "AI model to use")
+    .action(async (options: { range?: string; model?: string }) => {
+        console.log(banner);
+        if (!process.env.OPENROUTER_API_KEY) {
+            console.error(chalk.red("❌ OPENROUTER_API_KEY not found in environment"));
+            process.exit(1);
+        }
+        const { reviewDiff } = await import("../quality/diff");
+        const text = await reviewDiff({ range: options.range, model: options.model });
+        console.log("\n" + text + "\n");
+    });
+
+program
+    .command("cost-predict [completion]")
+    .description("Estimate the cost of an upcoming agent turn given current settings")
+    .option("-m, --model <model>", "AI model to evaluate")
+    .option("--prompt <text>", "Inline prompt to estimate (default: empty)")
+    .action(async (completion: string | undefined, options: { model?: string; prompt?: string }) => {
+        console.log(banner);
+        const { predictTurnCost, formatPrediction } = await import("../quality/cost_predict");
+        const completionTokens = completion ? parseInt(completion, 10) : undefined;
+        const messages = options.prompt
+            ? [{ role: "user" as const, content: options.prompt }]
+            : [];
+        const prediction = predictTurnCost({ messages, model: options.model, completionTokens });
+        console.log("\n" + formatPrediction(prediction) + "\n");
     });
 
 // ============================================================================
