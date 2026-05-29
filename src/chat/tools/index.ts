@@ -106,6 +106,7 @@ import { searchFilesTool } from "./search_files";
 import { spawnAppTool } from "./spawn_app";
 import { evolveAppTool } from "./evolve_app";
 import { deployAppTool } from "./deploy_app";
+import { spawnSubagentTool } from "./spawn_subagent";
 
 export function buildDefaultRegistry(): ToolRegistry {
     const reg = new ToolRegistry();
@@ -119,6 +120,7 @@ export function buildDefaultRegistry(): ToolRegistry {
     reg.register(spawnAppTool);
     reg.register(evolveAppTool);
     reg.register(deployAppTool);
+    reg.register(spawnSubagentTool);
     return reg;
 }
 

@@ -11,6 +11,7 @@ import { CheckpointManager } from "./checkpoints";
 import { buildDefaultRegistry } from "./tools";
 import { runAgentTurn } from "./agent";
 import { display as defaultDisplay } from "./display";
+import { HookManager } from "./hooks";
 
 export interface AskOptions {
     cwd?: string;
@@ -18,6 +19,8 @@ export interface AskOptions {
     model?: string;
     outputFormat?: "text" | "json";
     autoApprove?: boolean;
+    /** Skip MCP autoConnect (default false). */
+    noMcp?: boolean;
 }
 
 export async function chat(options: ReplOptions = {}): Promise<void> {
@@ -29,6 +32,18 @@ export async function ask(prompt: string, options: AskOptions = {}): Promise<{ t
     const context = new ChatContext({ cwd, extraDirs: options.extraDirs });
     const registry = buildDefaultRegistry();
     const checkpoints = new CheckpointManager({ cwd });
+    const hooks = HookManager.fromSettings();
+
+    if (!options.noMcp) {
+        try {
+            const { McpRegistry } = await import("../mcp/registry");
+            const { bridgeAllAutoServers } = await import("../mcp/tool_bridge");
+            const mcp = McpRegistry.fromSettings();
+            await bridgeAllAutoServers(mcp, registry);
+        } catch {
+            // MCP is optional; fail open.
+        }
+    }
 
     // In headless mode, use a silent display unless emitting text.
     const json = options.outputFormat === "json";
@@ -41,6 +56,7 @@ export async function ask(prompt: string, options: AskOptions = {}): Promise<{ t
         display: baseDisplay,
         model: options.model,
         autoApprove: options.autoApprove ?? !!json,
+        hooks,
     });
 
     if (json) {

@@ -439,6 +439,127 @@ export async function chatWithTools(
 }
 
 /**
+ * Streaming variant of chatWithTools.
+ *
+ * Streams Server-Sent Events from OpenRouter, invoking `onChunk` for every
+ * incremental piece of assistant text. Tool calls are accumulated by index
+ * and returned at the end alongside the full content. Falls back to
+ * non-streaming on any transport error.
+ */
+export async function chatWithToolsStream(
+    messages: OpenRouterMessage[],
+    tools: ToolSchema[],
+    onChunk: (chunk: string) => void,
+    options: CompletionOptions = {}
+): Promise<ChatTurnResult> {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) throw new Error("OPENROUTER_API_KEY not found in environment");
+
+    const model = options.model || DEFAULT_MODEL;
+    const body: Record<string, any> = {
+        model,
+        messages,
+        max_tokens: options.maxTokens || 4096,
+        temperature: options.temperature ?? 0.7,
+        stream: true,
+    };
+    if (tools.length > 0) {
+        body.tools = tools;
+        body.tool_choice = "auto";
+    }
+    if (options.thinking) body.reasoning = { effort: "high" };
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+    try {
+        const response = await fetch(OPENROUTER_BASE_URL, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${apiKey}`,
+                "HTTP-Referer": "https://helix-lang.dev",
+                "X-Title": "Helix CLI",
+                "Accept": "text/event-stream",
+            },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+        });
+
+        if (!response.ok || !response.body) {
+            clearTimeout(timeout);
+            // Fall back to non-streaming
+            return await chatWithTools(messages, tools, options);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let content = "";
+        const toolCallParts = new Map<number, { id?: string; name?: string; argsBuf: string }>();
+        let finishReason = "stop";
+        let usage: ChatTurnResult["usage"] | undefined;
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+
+            let idx;
+            while ((idx = buffer.indexOf("\n")) >= 0) {
+                const line = buffer.slice(0, idx).trim();
+                buffer = buffer.slice(idx + 1);
+                if (!line || line.startsWith(":")) continue;
+                if (!line.startsWith("data:")) continue;
+                const payload = line.slice(5).trim();
+                if (payload === "[DONE]") break;
+                let evt: any;
+                try { evt = JSON.parse(payload); } catch { continue; }
+                if (evt.usage) usage = evt.usage;
+                const choice = evt.choices?.[0];
+                if (!choice) continue;
+                if (choice.finish_reason) finishReason = choice.finish_reason;
+                const delta = choice.delta || {};
+                if (typeof delta.content === "string" && delta.content) {
+                    content += delta.content;
+                    onChunk(delta.content);
+                }
+                if (Array.isArray(delta.tool_calls)) {
+                    for (const tc of delta.tool_calls) {
+                        const i = typeof tc.index === "number" ? tc.index : 0;
+                        const slot = toolCallParts.get(i) || { argsBuf: "" };
+                        if (tc.id) slot.id = tc.id;
+                        if (tc.function?.name) slot.name = tc.function.name;
+                        if (typeof tc.function?.arguments === "string") slot.argsBuf += tc.function.arguments;
+                        toolCallParts.set(i, slot);
+                    }
+                }
+            }
+        }
+        clearTimeout(timeout);
+
+        const toolCalls: ToolCall[] = [];
+        for (const [, slot] of [...toolCallParts.entries()].sort((a, b) => a[0] - b[0])) {
+            if (!slot.name) continue;
+            toolCalls.push({
+                id: slot.id || `call_${toolCalls.length + 1}`,
+                type: "function",
+                function: { name: slot.name, arguments: slot.argsBuf || "{}" },
+            });
+        }
+
+        if (usage) trackCost(model, usage);
+        return { content, toolCalls, finishReason, usage };
+    } catch (err: any) {
+        clearTimeout(timeout);
+        if (err?.name === "AbortError") {
+            // fall through to non-streaming retry
+        }
+        return await chatWithTools(messages, tools, options);
+    }
+}
+
+/**
  * Available models on OpenRouter - OpenClaw-aligned priority
  */
 export const AVAILABLE_MODELS = [

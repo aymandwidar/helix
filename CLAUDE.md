@@ -1,5 +1,5 @@
 # Helix v14–v16 Requirements Specification
-**Document Purpose:** Master blueprint for Claude Code implementation sessions.
+**Document Purpose:** Master blueprint for Claude Code implementation sessions. Incorporates best patterns from Claude Code (leaked architecture, March 31 2026), Gemini CLI, and AD AI Engine unique capabilities (CMM, Council, OpenClaw).
 **Last Updated:** May 29, 2026
 **Owner:** AD AI Engine / Ayman Dwidar
 
@@ -155,7 +155,202 @@ Based on analysis of `google-gemini/gemini-cli` (105K ⭐, TypeScript, Apache 2.
 - **Agents:** Zain (main), Aden (secondary)
 - **Model routing:** minimax-m2.5 primary → deepseek/llama-3.3-70b fallbacks
 - **Memory:** Felix memory system (local embeddings, all-MiniLM-L6-v2)
+
 - **Integration:** `helix route "complex task"` can delegate to OpenClaw agents for multi-step autonomous work.
+
+---
+
+---
+
+## Architecture Patterns from Claude Code (Leaked Source, March 31 2026)
+
+**Context:** On March 31, 2026, Anthropic accidentally published 512,000 lines of Claude Code source (TypeScript) via npm source map. The community analyzed the architecture. Below are the patterns Helix MUST adopt — reimplemented fresh (not copied) to avoid legal risk.
+
+### Core Architecture (from QueryEngine.ts)
+Claude Code's heart is a unified reasoning loop:
+```
+User prompt → LLM reasoning → Tool selection → Permission check → Execution → Observe result → Loop
+```
+This is identical to what Sprint 7 built. ✅ Already implemented in `src/chat/agent.ts`.
+
+### Patterns to Incorporate Across Sprints:
+
+#### 1. Hooks System (Add in Sprint 8)
+Pre/post execution hooks that fire around every tool call:
+```typescript
+// src/chat/hooks/index.ts
+interface ToolHook {
+  name: string;
+  when: 'before' | 'after';
+  tool: string | '*';  // '*' = all tools
+  handler: (context: HookContext) => Promise<HookResult>;
+}
+
+// Example: CMM auto-log hook fires AFTER every session
+const cmmAutoLog: ToolHook = {
+  name: 'cmm-session-log',
+  when: 'after',
+  tool: '*',
+  handler: async (ctx) => {
+    if (ctx.sessionEnding) {
+      await mcpClient.call('cognitive-memory', 'log_new_discovery', {
+        session_id: ctx.sessionId,
+        node_type: ctx.succeeded ? 'SOLUTION' : 'DEAD_END',
+        content: ctx.summary,
+        confidence: ctx.succeeded ? 0.8 : 0.6
+      });
+    }
+    return { continue: true };
+  }
+};
+```
+
+#### 2. Subagent Spawning (Add in Sprint 9 — Evolve Mode)
+Claude Code spawns child processes for parallel subtasks:
+```typescript
+// src/chat/subagent.ts
+interface SubagentConfig {
+  task: string;
+  tools: string[];        // restricted tool set
+  maxTurns: number;
+  budget: number;         // token budget cap
+  reportTo: 'parent' | 'user';
+}
+
+// Usage in evolve mode:
+// "Add auth to all 5 routes" → spawn 5 subagents, each handles one route
+const results = await Promise.all(
+  routes.map(route => spawnSubagent({
+    task: `Add NextAuth.js protection to ${route.path}`,
+    tools: ['file_read', 'file_edit'],
+    maxTurns: 10,
+    budget: 5000,
+    reportTo: 'parent'
+  }))
+);
+```
+
+#### 3. Streaming Output (Add in Sprint 8)
+Tokens stream to terminal as they generate — feels instant:
+```typescript
+// src/chat/display/stream.ts
+async function streamResponse(generator: AsyncGenerator<string>): Promise<string> {
+  let full = '';
+  for await (const chunk of generator) {
+    process.stdout.write(chunk);  // immediate display
+    full += chunk;
+  }
+  process.stdout.write('\n');
+  return full;
+}
+```
+Integrate with OpenRouter's streaming endpoint (`stream: true` in API call).
+
+#### 4. Multi-turn Context Compression (Add in Sprint 11 — maps to v19 efficiency)
+Claude Code prunes old turns when context gets long:
+```typescript
+// src/chat/context/compressor.ts
+interface CompressionStrategy {
+  maxTokens: number;       // trigger compression above this
+  keepRecent: number;      // always keep last N turns
+  summarizeOlder: boolean; // summarize older turns into one block
+  preserveTools: boolean;  // keep tool calls/results (they're factual)
+}
+
+// Strategy: keep last 10 turns verbatim, summarize everything older
+// Result: 100-turn session stays under 8K tokens
+```
+
+#### 5. Git-Aware Context (Add in Sprint 12)
+Claude Code reads git state before every action:
+```typescript
+// src/chat/context/git.ts
+interface GitContext {
+  branch: string;
+  uncommittedFiles: string[];
+  recentCommits: { hash: string; message: string; date: string }[];
+  hasStash: boolean;
+  remoteStatus: 'ahead' | 'behind' | 'diverged' | 'up-to-date';
+}
+
+// Auto-injected into system prompt:
+// "You are on branch `feature/auth`. 3 uncommitted files. Last commit: 'add login page' (2h ago)."
+```
+
+#### 6. Permission Tiers (Enhance Sprint 7's existing approval)
+Claude Code has 4 permission levels:
+```typescript
+type PermissionLevel = 
+  | 'always_allow'    // file_read, list_dir, search — never asks
+  | 'auto_approve'    // file_write in project dir — approves silently
+  | 'ask_once'        // shell_exec — asks first time, remembers for session
+  | 'always_ask';     // deploy, git push, destructive ops — always confirms
+
+// Store per-session: { [toolName]: PermissionLevel }
+// User can: /allow file_write, /deny shell_exec, /trust (allow all)
+```
+
+#### 7. HELIX.md Per-Project Instructions (Already implemented ✅)
+Same as Claude's `CLAUDE.md` — project-level persistent instructions that customize behavior.
+
+#### 8. Compact Tool Results (Token efficiency — integrates with v19)
+Claude Code strips verbose tool output before feeding back to LLM:
+```typescript
+// src/chat/tools/compact.ts
+function compactToolResult(tool: string, result: string, maxChars: number = 2000): string {
+  if (result.length <= maxChars) return result;
+  
+  // For file reads: keep first 500 + last 500 + "...truncated N lines..."
+  // For shell output: keep last 1000 chars (most relevant)
+  // For search results: keep top 5 matches only
+  // For web fetch: strip HTML, keep text, truncate
+}
+```
+
+#### 9. Session Persistence + Resume (Add in Sprint 8)
+Claude Code can resume interrupted sessions:
+```typescript
+// src/chat/session/persistence.ts
+interface PersistedSession {
+  id: string;
+  startedAt: string;
+  messages: Message[];
+  checkpoints: Checkpoint[];
+  toolApprovals: Record<string, PermissionLevel>;
+  projectPath: string;
+  model: string;
+  totalCost: number;
+}
+
+// Commands: /save, /resume <session-id>, /sessions (list recent)
+// Auto-save on exit (unless /exit --no-save)
+```
+
+#### 10. OpenClaw Integration (Post-v16 / Sprint 13+)
+Route complex multi-step tasks to OpenClaw's agent swarm:
+```typescript
+// src/integrations/openclaw.ts
+interface OpenClawConfig {
+  host: string;              // "192.168.4.40"
+  port: number;
+  agents: {
+    zain: { model: string; workspace: string };
+    aden: { model: string; workspace: string };
+  };
+  routing: {
+    primary: string;         // "minimax/minimax-m2.5"
+    fallbacks: string[];     // ["deepseek/deepseek-chat", "meta-llama/llama-3.3-70b"]
+  };
+}
+
+// In chat: "helix route 'research competitor pricing and generate a comparison table'"
+// → delegates to Zain agent, returns structured result
+```
+
+---
+
+### Legal Note
+DO NOT copy code from Claude Code forks (Claw Code, claude-code-rev, etc.). The source was accidentally published and remains proprietary Anthropic IP. We are reimplementing PATTERNS (architectural concepts, UX flows, interaction designs) — not copying source. All Helix code must be original TypeScript authored from scratch.
 
 ---
 

@@ -63,7 +63,7 @@ import { evolveCodebase } from "../commands/evolve";
 const banner = `
 ${chalk.cyan("╦ ╦╔═╗╦  ╦═╗ ╦")}
 ${chalk.cyan("╠═╣║╣ ║  ║╔╩╦╝")}
-${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v14.0.0")}
+${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v14.1.0")}
 ${chalk.gray("AI-Native Development Platform")}
 ${chalk.gray("Generate • Chat • Preview • Deploy • Evolve")}
 `;
@@ -73,7 +73,7 @@ const program = new Command();
 program
     .name("helix")
     .description("Helix - AI-Native Development Platform")
-    .version("14.0.0")
+    .version("14.1.0")
     .addHelpText("before", banner);
 
 // ============================================================================
@@ -182,6 +182,114 @@ program
         } else {
             console.log(chalk.cyan("🌐 Target: Next.js Web App"));
             await spawnApp(prompt, spawnOptions, constitutionContent);
+        }
+    });
+
+// ============================================================================
+// V14.1 COMMANDS: MCP Client Integration
+// ============================================================================
+
+const mcpCmd = program
+    .command("mcp")
+    .description("Manage MCP server integrations (Cognitive Memory, Council, etc.)");
+
+mcpCmd
+    .command("list")
+    .description("List configured MCP servers")
+    .action(async () => {
+        console.log(banner);
+        const { listMcpServers, getSettingsPath } = await import("../mcp/config");
+        const servers = listMcpServers();
+        console.log(chalk.gray(`Settings: ${getSettingsPath()}\n`));
+        if (servers.length === 0) {
+            console.log(chalk.yellow("No MCP servers configured."));
+            console.log(chalk.gray("Add one with: helix mcp add <name> --command <path> [--args ...] [--auto]"));
+            return;
+        }
+        for (const { name, config } of servers) {
+            const auto = config.autoConnect ? chalk.green(" [auto]") : "";
+            console.log(`  ${chalk.bold.cyan(name)}${auto}`);
+            console.log(chalk.gray(`    command: ${config.command}`));
+            if (config.args && config.args.length) console.log(chalk.gray(`    args:    ${config.args.join(" ")}`));
+            if (config.description) console.log(chalk.gray(`    desc:    ${config.description}`));
+        }
+    });
+
+mcpCmd
+    .command("status")
+    .description("Connect to all configured MCP servers and report status")
+    .action(async () => {
+        console.log(banner);
+        const { McpRegistry } = await import("../mcp/registry");
+        const registry = McpRegistry.fromSettings();
+        const names = registry.listServerNames();
+        if (names.length === 0) {
+            console.log(chalk.yellow("No MCP servers configured."));
+            return;
+        }
+        console.log(chalk.cyan(`Probing ${names.length} server(s)...\n`));
+        for (const name of names) {
+            try {
+                await registry.connect(name);
+                const tools = await registry.listTools(name);
+                console.log(`  ${chalk.green("●")} ${chalk.bold(name)} ${chalk.gray("— " + tools.length + " tool(s)")}`);
+            } catch (e: any) {
+                console.log(`  ${chalk.red("●")} ${chalk.bold(name)} ${chalk.gray("— " + (e?.message || "connect failed"))}`);
+            }
+        }
+        await registry.closeAll();
+    });
+
+mcpCmd
+    .command("add <name>")
+    .description("Add a new MCP server config")
+    .requiredOption("-c, --command <path>", "Executable path")
+    .option("-a, --args <args...>", "Arguments to the command")
+    .option("--auto", "Auto-connect when chat mode starts")
+    .option("--cwd <dir>", "Working directory for the server process")
+    .option("--description <text>", "Human description")
+    .action(async (name: string, options: { command: string; args?: string[]; auto?: boolean; cwd?: string; description?: string }) => {
+        console.log(banner);
+        const { addMcpServer, getSettingsPath } = await import("../mcp/config");
+        addMcpServer(name, {
+            command: options.command,
+            args: options.args || [],
+            autoConnect: !!options.auto,
+            cwd: options.cwd,
+            description: options.description,
+        });
+        console.log(chalk.green(`✅ Added MCP server '${name}'`));
+        console.log(chalk.gray(`   ${getSettingsPath()}`));
+    });
+
+mcpCmd
+    .command("remove <name>")
+    .description("Remove an MCP server config")
+    .action(async (name: string) => {
+        const { removeMcpServer } = await import("../mcp/config");
+        removeMcpServer(name);
+        console.log(chalk.green(`✅ Removed MCP server '${name}'`));
+    });
+
+mcpCmd
+    .command("tools <name>")
+    .description("List tools exposed by an MCP server")
+    .action(async (name: string) => {
+        console.log(banner);
+        const { McpRegistry } = await import("../mcp/registry");
+        const registry = McpRegistry.fromSettings();
+        try {
+            const tools = await registry.listTools(name);
+            console.log(chalk.cyan(`\n${name} — ${tools.length} tool(s):\n`));
+            for (const t of tools) {
+                console.log(`  ${chalk.bold(t.name)}`);
+                if (t.description) console.log(chalk.gray(`    ${t.description}`));
+            }
+        } catch (e: any) {
+            console.error(chalk.red(`Failed: ${e?.message || e}`));
+            process.exit(1);
+        } finally {
+            await registry.closeAll();
         }
     });
 
