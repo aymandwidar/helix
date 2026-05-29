@@ -349,8 +349,313 @@ interface OpenClawConfig {
 
 ---
 
-### Legal Note
+### Legal Note (Original Leak)
 DO NOT copy code from Claude Code forks (Claw Code, claude-code-rev, etc.). The source was accidentally published and remains proprietary Anthropic IP. We are reimplementing PATTERNS (architectural concepts, UX flows, interaction designs) — not copying source. All Helix code must be original TypeScript authored from scratch.
+
+---
+
+---
+
+## Claude Code Latest Features (May 2026) — Additional Patterns for Helix
+
+**Source:** Official Claude Code docs, changelog, and weekly digests (code.claude.com). These are PUBLIC features we can study and reimplement.
+
+### HIGH-PRIORITY Features to Add (Unique, High-Impact)
+
+#### 1. `/goal` — Persistent Goal Mode (Week 20, May 11-15)
+Keeps Claude working across turns until a completion condition holds. No repeated prompting.
+```
+helix> /goal "All tests pass and the app builds clean"
+# Helix keeps working autonomously until condition met
+# Shows progress, asks questions only when blocked
+```
+**Add in:** Sprint 9 (Evolve mode) — perfect for "fix all linting errors" or "make all tests pass"
+
+#### 2. `/loop` — Self-Pacing Interval Mode (Week 15, Apr 6-10)
+Runs on an interval, checking/acting periodically. Like a cron for your agent.
+```
+helix> /loop 30s "watch for TypeScript errors and fix them"
+# Every 30 seconds: check → fix → report
+```
+**Add in:** Sprint 11 (Quality audits) — continuous quality monitoring
+
+#### 3. Monitor Tool (Week 15, Apr 6-10)
+Streams background events into the conversation (tail logs, watch build output, react live).
+```typescript
+// src/chat/tools/monitor.ts
+// Tails a file or process output, injects events into the agent loop
+// Example: monitor the dev server while making changes
+helix> /monitor "npm run dev"
+# Agent sees build errors in real-time as it edits files
+```
+**Add in:** Sprint 11 or Sprint 12
+
+#### 4. Auto Mode — Permission Classifier (Week 13, Mar 23-27)
+A classifier handles permission prompts: safe actions run without interruption, risky ones get blocked. Middle ground between "approve everything" and "ask every time."
+```typescript
+// src/chat/permissions/auto_classifier.ts
+interface AutoModeConfig {
+  safe: string[];      // ['file_read', 'list_dir', 'search_files'] — never ask
+  risky: string[];     // ['shell_exec', 'deploy_app'] — always ask
+  classify: string[];  // ['file_write', 'file_edit'] — AI decides based on context
+}
+```
+**Add in:** Sprint 10 (enhances Sprint 7's permission system)
+
+#### 5. Plugin System — Full Component Model (Week 19, May 4-8)
+Claude Code plugins are shareable packages containing: skills, agents, hooks, MCP servers, LSP servers, monitors, themes.
+```
+helix-plugin/
+├── manifest.json           # Plugin metadata + component declarations
+├── skills/                 # Custom slash commands
+├── agents/                 # Subagent definitions
+├── hooks/                  # Pre/post execution hooks
+├── mcp-servers/            # Bundled MCP servers
+├── monitors/               # Background watchers
+└── themes/                 # UI themes
+```
+**Add in:** Sprint 10 or Sprint 11 — Helix's Sprint 6 plugin system is simpler (generator plugins only). Expand to match Claude Code's full component model.
+
+#### 6. Ultrareview — Cloud Multi-Agent Code Review (Week 17-18, Apr 20-May 1)
+A fleet of bug-hunting agents runs in parallel, findings land back in CLI.
+```
+helix> /review
+# Spawns N subagents, each checks different aspect:
+#   - Security vulnerabilities
+#   - Performance issues
+#   - Accessibility gaps
+#   - Type safety
+#   - Test coverage gaps
+# Results aggregated and presented
+```
+**Add in:** Sprint 11 (Quality audits) — leverages the subagent system from Sprint 8
+
+#### 7. Ultraplan — Cloud Planning (Week 15, Apr 6-10)
+Draft a plan, review/comment in web editor, then execute remotely or locally.
+```
+helix> /plan "Add user authentication to the recipe app"
+# Generates structured plan with steps
+# User can edit/approve each step
+# Then: /plan execute — runs the plan step by step
+```
+**Add in:** Sprint 9 (Evolve mode) — plan before modifying existing apps
+
+#### 8. Context Compression — "Summarize up to here" (Week 20, May 11-15)
+Rewind menu can compress earlier context. Keeps sessions cheap.
+```
+helix> /compress
+# Summarizes conversation so far into ~500 tokens
+# Frees context window for new work
+# Original context still in checkpoints if needed
+```
+**Add in:** Sprint 11 (Token efficiency / v19 prep)
+
+#### 9. Agent View — Session Dashboard (Week 20, May 11-15)
+One screen for every session: what's running, what's blocked, what's done.
+```
+helix> /agents
+# Shows all active subagents, their status, results
+# Click to inspect, cancel, or steer
+```
+**Add in:** Sprint 10 or Sprint 12 — once subagents are working (Sprint 8)
+
+#### 10. Computer Use — GUI Interaction (Week 14, Mar 30-Apr 3)
+Claude can open native apps, click through UI, verify changes visually.
+```
+helix> /verify-visual
+# Opens the generated app in browser
+# Takes screenshot, analyzes layout
+# Reports visual issues (overlapping elements, broken responsive)
+```
+**Add in:** v17+ (Desktop app phase) — requires Tauri shell access
+
+### MEDIUM-PRIORITY (Nice-to-Have)
+
+| Feature | What it does | Sprint |
+|---|---|---|
+| `/usage` | Shows what's driving token costs | Sprint 11 |
+| Custom themes (`/theme`) | Terminal color palettes | Sprint 12 |
+| Session recap | Shows what happened while unfocused | Sprint 10 |
+| Conditional `if` hooks | Hooks fire only when condition met | Sprint 10 |
+| Effort levels (`/effort`) | Dial quality vs speed | Sprint 11 |
+| Native binaries | Faster startup (no Node bootstrap) | v18+ (Rust rewrite) |
+| Mobile push notifications | Alert when task finishes | v17 (mobile companion) |
+
+
+### Updated Sprint Map with New Features
+
+| Sprint | Version | Core Goal | + Claude Code Features |
+|---|---|---|---|
+| 7 | v14.0 | Interactive agent mode | ✅ Done |
+| 8 | v14.1 | MCP + CMM + Hooks + Streaming + Subagents | ✅ Done |
+| 9 | v15.0 | Evolve mode (modify existing apps) | + /goal, /plan |
+| 10 | v15.1 | Council + Auto-mode permissions + Plugins v2 | + Auto classifier, agent view, session recap |
+| 11 | v15.2 | Quality audits + Token efficiency | + /loop, /review (ultrareview), /compress, /effort, monitors |
+| 12 | v16.0 | Deploy + Git workflows + Themes | + Git-aware context, themes, /usage |
+
+---
+
+---
+
+## OpenAI Codex Architecture Patterns — What Makes It Great
+
+**Source:** Official docs (developers.openai.com/codex), Ars Technica deep dive, ai-rockstars.com architecture analysis. Codex is OpenAI's competing coding agent ($200/mo Pro plan).
+
+### Key Patterns to Adopt
+
+#### 1. The "Think-Act-Observe" Loop (Codex's Core)
+Codex doesn't just respond — it runs a continuous cycle:
+```
+Context Retrieval → Reasoning & Decision → Tool Execution → Feedback Loop → Repeat
+```
+- **State persistence between commands** — remembers what ran, what exit codes were, what files changed
+- **stderr as input, not failure** — error messages become new context for self-correction
+- **Constraint decoding** — forces model to emit ONLY valid shell/code (no prose, no markdown explanations during execution)
+
+**For Helix:** The agent loop in Sprint 7 already does this. Enhance with:
+- Strict output mode during tool execution (no explanations, just code)
+- stderr capture → automatic retry with corrected command
+- Session state persists across `helix chat` restarts (Sprint 8 session persistence covers this)
+
+#### 2. Self-Healing Capabilities
+When a command fails, Codex reads the error, understands it, and generates a corrected version automatically. No human intervention.
+```typescript
+// src/chat/self_heal.ts (enhance existing self-heal.ts)
+interface SelfHealConfig {
+  maxRetries: number;        // default: 3
+  backoffStrategy: 'none' | 'linear';
+  captureStderr: boolean;    // feed errors back to model
+  autoFix: boolean;          // attempt fix without asking user
+}
+
+// In agent loop: if tool returns error → inject error into next prompt → retry
+// "The command failed with: Permission denied. Adjusting to use sudo..."
+```
+**For Helix:** Already have self-heal for BUILD errors (Sprint 3). Extend to ALL tool execution — shell commands, deploys, file operations. Any error → auto-retry with fix.
+
+#### 3. Token Economy — Sliding Window + Output Truncation
+Codex keeps only last 3-5 interactions in active memory. Long outputs get truncated with `head`/`tail`.
+```typescript
+// src/chat/context/sliding_window.ts
+interface SlidingWindowConfig {
+  keepLastN: number;          // keep last N turns verbatim
+  truncateOutputAt: number;   // max chars per tool result
+  truncateStrategy: 'head' | 'tail' | 'head+tail';
+  totalBudget: number;        // max tokens in context
+}
+```
+**For Helix:** Maps to v19 token efficiency sprint + Sprint 11 context compression.
+
+#### 4. Sandboxed Execution
+Codex runs inside Docker containers for safety. The host system is never at risk.
+```typescript
+// src/chat/sandbox/index.ts
+interface SandboxConfig {
+  mode: 'native' | 'docker' | 'none';
+  allowNetwork: boolean;
+  allowFileWrite: boolean;
+  mountPaths: string[];      // whitelist of accessible dirs
+  timeout: number;           // max execution time per command
+}
+```
+**For Helix:** Add optional sandboxing for `shell_exec` tool. Default to 'native' (user's machine), offer 'docker' mode for untrusted operations. Sprint 10 or Sprint 12.
+
+#### 5. Multi-Thread Project View (Codex App)
+The Codex app runs agents in separate threads organized by projects — seamless switching without losing context.
+```
+helix> /threads
+# Active threads:
+#   1. [recipe-app] Adding auth (3 turns, running)
+#   2. [fleet-daemon] Fix BLE scanning (paused)
+#   3. [helix-core] Sprint 9 evolve mode (done)
+```
+**For Helix:** Maps to Sprint 10 agent view + v17 desktop app.
+
+#### 6. Background Mode
+Codex can run tasks in the background, notify when done.
+```
+helix> /background "run all tests and fix failures"
+# → runs autonomously, notifies on completion
+# → results stored in /threads view
+```
+**For Helix:** Combine with `/goal` (from Claude Code) and subagents (Sprint 8). Sprint 11+.
+
+---
+
+## Cursor Composer 2.5 Architecture Patterns — What Developers Love
+
+**Source:** Cursor 3 release (Apr 2 2026), Composer 2.5 (May 18 2026). Cursor = $29.3B valuation, $2B ARR. Agent users outnumber autocomplete users 2:1.
+
+### Key Patterns to Adopt
+
+#### 1. Multi-File Simultaneous Editing with Reviewable Diffs
+Cursor edits multiple files at once, shows all changes as a unified diff view before applying.
+```typescript
+// src/chat/display/multi_diff.ts
+interface MultiFileDiff {
+  files: { path: string; hunks: DiffHunk[] }[];
+  summary: string;           // "3 files changed: added auth middleware, updated 2 routes"
+  reviewMode: boolean;       // if true, user approves before applying
+}
+
+// In evolve mode: "Add auth to all routes"
+// → generates diffs for 5 files → shows unified view → user approves → applies all
+```
+**For Helix:** Sprint 9 (Evolve mode) — show all proposed changes before applying.
+
+#### 2. Parallel Agents with Per-Task Scope (Cursor 3 "Agents Window")
+Multiple agents run in parallel, each scoped to a specific task, sharing the same codebase but with isolated context.
+```
+helix> /parallel "fix tests" "add error handling" "update docs"
+# 3 subagents spawn, work simultaneously
+# Results merge when all complete
+# Conflicts detected and surfaced for user resolution
+```
+**For Helix:** Already have subagent spawning (Sprint 8). Add the parallel command interface + conflict resolution in Sprint 10.
+
+#### 3. Design-Driven Workflows (Composer)
+Paste a screenshot/design → Cursor generates matching component code. References (images, URLs, Figma links) become generation context.
+```
+helix> /from-design screenshot.png "Make this responsive"
+# Analyzes the screenshot → generates matching React/Tailwind code
+# Uses vision model for layout understanding
+```
+**For Helix:** v17+ (requires vision model integration). Could be Sprint 12 if using OpenRouter's vision models.
+
+#### 4. Effort Calibration
+Composer 2.5 has effort levels — dial between quick/cheap vs thorough/expensive:
+```
+helix> /effort high
+# All subsequent actions use more tokens, more thorough reasoning
+helix> /effort low  
+# Quick mode — fast, cheap, less thorough
+```
+**For Helix:** Sprint 11 (maps to Claude Code's `/effort` slider too).
+
+#### 5. Integrated Browser
+Cursor 3 has a built-in browser for testing generated web apps without leaving the IDE.
+**For Helix:** Consider `helix preview` enhancement — open generated app in a browser pane from CLI. Already partially exists.
+
+---
+
+## SYNTHESIS: Helix's Unique Combination
+
+After studying Claude Code, Codex, Cursor Composer, and Gemini CLI — Helix v16's moat is clear:
+
+| Feature | Claude Code | Codex | Cursor | Helix v16 |
+|---|---|---|---|---|
+| Interactive terminal agent | ✅ | ✅ | ❌ (IDE) | ✅ |
+| App generation from prompt | ❌ | ❌ | ❌ | ✅ |
+| .helix DSL (declarative) | ❌ | ❌ | ❌ | ✅ |
+| Persistent reasoning memory | ❌ | ❌ | ❌ | ✅ (CMM) |
+| Multi-model deliberation | ❌ | ❌ | ❌ | ✅ (Council) |
+| Self-healing builds | ❌ | Partial | Partial | ✅ (full) |
+| Plugin ecosystem | ✅ | ❌ | ✅ | ✅ |
+| Multi-agent routing | ❌ | ❌ | ❌ | ✅ (OpenClaw) |
+| Free + open source | ❌ ($20/mo) | ❌ ($200/mo) | ❌ ($20/mo) | ✅ (MIT) |
+| Deploy from CLI | ❌ | ❌ | ❌ | ✅ |
+
+**Nobody else combines: generation + memory + deliberation + agents + free.** That's the moat. Build on it.
 
 ---
 

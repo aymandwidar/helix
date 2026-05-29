@@ -63,7 +63,7 @@ import { evolveCodebase } from "../commands/evolve";
 const banner = `
 ${chalk.cyan("╦ ╦╔═╗╦  ╦═╗ ╦")}
 ${chalk.cyan("╠═╣║╣ ║  ║╔╩╦╝")}
-${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v14.1.0")}
+${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v15.0.0")}
 ${chalk.gray("AI-Native Development Platform")}
 ${chalk.gray("Generate • Chat • Preview • Deploy • Evolve")}
 `;
@@ -73,7 +73,7 @@ const program = new Command();
 program
     .name("helix")
     .description("Helix - AI-Native Development Platform")
-    .version("14.1.0")
+    .version("15.0.0")
     .addHelpText("before", banner);
 
 // ============================================================================
@@ -691,13 +691,54 @@ program
 // EVOLVE COMMAND: Codebase Evolution & Analysis
 // ============================================================================
 
+// Sprint 9 evolve actions modify existing apps; v13 actions are read-only audits.
+const SPRINT9_EVOLVE_ACTIONS = new Set(["add-feature", "refactor", "fix", "migrate", "optimize"]);
+
 program
-    .command("evolve [action] [category]")
-    .description("Evolve codebase: scan, suggest, apply fixes, security-audit")
-    .option("-p, --path <path>", "Project path to analyze", process.cwd())
-    .action(async (action: string | undefined, category: string | undefined, options: { path: string }) => {
+    .command("evolve [action] [intent...]")
+    .description("Evolve codebase. Actions: scan, suggest, apply, security-audit (analysis); add-feature, refactor, fix, migrate, optimize (modify existing app).")
+    .option("-p, --path <path>", "Project path", process.cwd())
+    .option("-y, --yes", "Skip confirmation prompt")
+    .option("--dry-run", "Print the change plan without applying it")
+    .option("--skip-validation", "Skip the build+test validation pass")
+    .option("--max-heal <n>", "Max self-heal attempts after a failed validation", "1")
+    .option("-m, --model <model>", "AI model to use for planning")
+    .action(async (
+        action: string | undefined,
+        intent: string[] | undefined,
+        options: { path: string; yes?: boolean; dryRun?: boolean; skipValidation?: boolean; maxHeal?: string; model?: string }
+    ) => {
         console.log(banner);
-        await evolveCodebase(action || 'scan', category, options.path);
+        const a = (action || "scan").toLowerCase();
+
+        // Sprint 9: modify existing app
+        if (SPRINT9_EVOLVE_ACTIONS.has(a)) {
+            if (!process.env.OPENROUTER_API_KEY) {
+                console.error(chalk.red("❌ OPENROUTER_API_KEY not found in environment"));
+                process.exit(1);
+            }
+            const intentStr = (intent || []).join(" ").trim();
+            if (!intentStr) {
+                console.error(chalk.red(`❌ Missing intent. Try: helix evolve ${a} "description of what you want"`));
+                process.exit(1);
+            }
+            const { evolveProject } = await import("../evolve");
+            const result = await evolveProject({
+                action: a as any,
+                intent: intentStr,
+                cwd: options.path,
+                yes: !!options.yes,
+                dryRun: !!options.dryRun,
+                skipValidation: !!options.skipValidation,
+                maxHealAttempts: parseInt(options.maxHeal || "1", 10),
+                model: options.model,
+            });
+            process.exit(result.applied && result.validation !== "failed" ? 0 : 1);
+        }
+
+        // Sprint 4 actions (analysis only)
+        const category = (intent || []).join(" ").trim() || undefined;
+        await evolveCodebase(a, category, options.path);
     });
 
 // ============================================================================
@@ -1291,6 +1332,9 @@ ${chalk.cyan("Examples:")}
   $ helix preflight app.helix  ${chalk.gray("# Validate blueprint")}
   $ helix evolve scan          ${chalk.gray("# Analyze codebase health")}
   $ helix evolve apply         ${chalk.gray("# Auto-fix issues")}
+  $ helix evolve add-feature "user auth with Google" ${chalk.gray("# Modify existing app")}
+  $ helix evolve fix "login crashes on mobile" --dry-run
+  $ helix evolve migrate "upgrade to Next.js 15"
   $ helix spawn "..." --dry-run ${chalk.gray("# Preview without generating")}
 
   ${chalk.gray("# Component library:")}
