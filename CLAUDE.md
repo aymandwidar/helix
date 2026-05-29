@@ -638,6 +638,7 @@ Cursor 3 has a built-in browser for testing generated web apps without leaving t
 
 ---
 
+
 ## SYNTHESIS: Helix's Unique Combination
 
 After studying Claude Code, Codex, Cursor Composer, and Gemini CLI — Helix v16's moat is clear:
@@ -656,6 +657,134 @@ After studying Claude Code, Codex, Cursor Composer, and Gemini CLI — Helix v16
 | Deploy from CLI | ❌ | ❌ | ❌ | ✅ |
 
 **Nobody else combines: generation + memory + deliberation + agents + free.** That's the moat. Build on it.
+
+---
+
+---
+
+## Additional Features from Landscape Research (May 29, 2026)
+
+Sources: OpenCode (165K⭐), Warp Terminal, Columbia University "9 Failure Patterns", Augment Code "80% Problem", Red Hat "Encoding/Decoding Gap".
+
+### HIGH-PRIORITY Additions (Unique to Helix — Nobody Else Has These)
+
+#### `/teach` — Persistent Corrections via CMM (Sprint 10)
+User corrects the agent once → Helix remembers FOREVER via CMM.
+```typescript
+// helix> /teach "Never use var in this project, always use const/let"
+// helix> /teach "Our auth uses Supabase, not NextAuth"
+// → Stored in CMM as a RULE node with confidence 1.0
+// → Injected into every future session for this project
+// → Unlike .helix rules, these are LEARNED from corrections, not pre-written
+
+// Implementation: calls CMM MCP tool log_new_discovery with node_type="RULE"
+```
+
+#### `/inherit` — Cross-Project Learning via CMM (Sprint 10)
+New project inherits learnings from similar past projects.
+```typescript
+// helix> /inherit recipe-app
+// "Inheriting 12 insights from recipe-app: auth patterns, Prisma gotchas, deploy config..."
+// → Queries CMM for all knowledge from the referenced project
+// → Injects relevant patterns into current session context
+// → Dead ends from recipe-app won't be repeated in this project
+```
+
+#### `--production-grade` Flag (Sprint 11)
+Generates the FULL 100% — not just the 80% that every other tool produces.
+```bash
+helix spawn "recipe app" --production-grade
+# Generates EVERYTHING:
+# ✅ App logic (the standard 80%)
+# ✅ Error boundaries + try/catch on all async ops
+# ✅ Input validation (zod schemas)
+# ✅ Rate limiting middleware
+# ✅ Security headers (CORS, CSP, HSTS)
+# ✅ Accessibility (ARIA labels, semantic HTML, keyboard nav)
+# ✅ SEO meta tags + OpenGraph
+# ✅ Logging + monitoring hooks (console → structured JSON)
+# ✅ Health check endpoint (/api/health)
+# ✅ Environment variable validation on startup
+# ✅ Graceful shutdown handling
+# ✅ API documentation (generated OpenAPI spec)
+```
+Differentiator: "The only AI that generates production-ready code, not demo-ready code."
+
+#### `/regression-guard` (Sprint 11)
+Before any change: snapshot all tests. After change: if ANY test regresses → auto-revert + report.
+```typescript
+// helix> /regression-guard on
+// "Regression guard active. All changes will be validated against current test suite."
+// → Before evolve/edit: runs tests, saves baseline
+// → After change: runs tests again
+// → If new failures: auto-reverts, reports what broke and why
+// → User decides: force-apply, fix, or abandon
+```
+
+### MEDIUM-PRIORITY Additions
+
+#### `/model` — Hot-Swap Models Mid-Session (Sprint 10)
+```bash
+helix> /model deepseek/deepseek-chat
+# "Switched to DeepSeek Chat. Context preserved."
+helix> /model anthropic/claude-sonnet-4
+# "Switched to Claude Sonnet 4. Context preserved."
+# Useful for: cheap model for exploration, expensive model for final generation
+```
+
+#### `/cost-predict` — Estimate Before Generating (Sprint 11)
+```bash
+helix> /cost-predict "Generate a CRM with 5 models and auth"
+# Estimated: ~45K tokens, ~$0.12, ~90 seconds
+# Proceed? [Y/n]
+```
+
+#### `/explain-diff` — Explain Each Change in Plain English (Sprint 11)
+```bash
+helix> /explain-diff
+# For each file changed in last operation:
+# auth/middleware.ts: "Added JWT verification that checks token expiry 
+#   and refreshes automatically — prevents 401 errors on long sessions"
+# prisma/schema.prisma: "Added User model with email uniqueness constraint
+#   and cascading delete on related Sessions"
+```
+
+#### Block-Based TUI Output (Sprint 11)
+Each command + output = a discrete, collapsible block (inspired by Warp Terminal):
+```
+┌─ 🔧 file_write: src/auth/middleware.ts ──────────────────────┐
+│ +export function authMiddleware(req, res, next) {            │
+│ +  const token = req.headers.authorization?.split(' ')[1];   │
+│ +  if (!token) return res.status(401).json({ error: '...' });│
+│ +  // ...                                                    │
+│ }                                                            │
+├─ ✅ Applied (23 lines) ─────────────────────── [copy] [undo] ┤
+└──────────────────────────────────────────────────────────────┘
+```
+
+### LOWER-PRIORITY (v17+)
+
+#### `/verify` — Visual Verification via Screenshot
+After generation, opens app in headless browser, takes screenshot, uses vision model to verify layout matches intent. Requires Puppeteer/Playwright.
+
+#### `/pair` — Collaborative Shared Session
+Two developers share one Helix session via WebSocket tunnel.
+
+#### `/audit-trail` — Decision Rationale Log
+Every AI decision logged with reasoning. "Why React over Vue?" → explainable.
+
+---
+
+### Final Updated Sprint Map (Complete)
+
+| Sprint | Version | Core Deliverables |
+|---|---|---|
+| 7 | v14.0 | ✅ Interactive agent mode |
+| 8 | v14.1 | ✅ MCP + CMM + Hooks + Subagents + Streaming |
+| 9 | v15.0 | ✅ Evolve mode (scan → plan → apply → validate → self-heal) |
+| 10 | v15.1 | Council + Auto-mode + /teach + /inherit + /model + Plugins v2 |
+| 11 | v15.2 | Quality: --production-grade, /regression-guard, /cost-predict, /explain-diff, /loop, /review, /compress, block TUI |
+| 12 | v16.0 | Deploy + Git workflows + Themes + /verify-visual |
 
 ---
 

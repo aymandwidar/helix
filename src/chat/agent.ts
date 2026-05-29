@@ -13,6 +13,7 @@ import { ChatContext } from "./context";
 import { CheckpointManager } from "./checkpoints";
 import { Display } from "./display";
 import { HookManager, NoopHooks } from "./hooks";
+import { PermissionEngine } from "./permissions";
 
 export interface AgentOptions {
     registry: ToolRegistry;
@@ -21,8 +22,11 @@ export interface AgentOptions {
     display: Display;
     model?: string;
     maxIterations?: number;
+    /** Legacy auto-approve flag — equivalent to mode=yolo when set. */
     autoApprove?: boolean;
     hooks?: HookManager;
+    /** Permission engine (defaults to fromSettings()). */
+    permissions?: PermissionEngine;
     /** Optional per-turn streaming callback for partial assistant text. */
     onStream?: (chunk: string) => void;
     /** Use streaming mode for chatWithTools. Falls back to non-streaming on error. */
@@ -106,6 +110,7 @@ export async function runAgentTurn(userMessage: string, opts: AgentOptions): Pro
 
 async function dispatchToolCall(call: ToolCall, opts: AgentOptions, hooks: HookManager): Promise<void> {
     const { registry, context, checkpoints, display, autoApprove } = opts;
+    const permissions = opts.permissions || PermissionEngine.fromSettings(undefined, autoApprove ? "yolo" : undefined);
     const tool = registry.get(call.function.name);
 
     if (!tool) {
@@ -160,7 +165,19 @@ async function dispatchToolCall(call: ToolCall, opts: AgentOptions, hooks: HookM
 
     display.toolCall(tool.name, args);
 
-    if (tool.requiresApproval && !autoApprove) {
+    const decision = permissions.evaluate(tool.name, args, !!tool.requiresApproval);
+    if (decision.action === "deny") {
+        const msg = `Permission denied: ${decision.reason}`;
+        display.warn(msg);
+        context.history.push({
+            role: "tool",
+            tool_call_id: call.id,
+            name: tool.name,
+            content: JSON.stringify({ success: false, error: msg }),
+        });
+        return;
+    }
+    if (decision.action === "ask") {
         const approved = await display.confirm(`Run ${tool.name}?`);
         if (!approved) {
             const msg = "User declined to run this tool.";

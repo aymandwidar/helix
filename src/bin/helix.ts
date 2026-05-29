@@ -63,7 +63,7 @@ import { evolveCodebase } from "../commands/evolve";
 const banner = `
 ${chalk.cyan("╦ ╦╔═╗╦  ╦═╗ ╦")}
 ${chalk.cyan("╠═╣║╣ ║  ║╔╩╦╝")}
-${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v15.0.0")}
+${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v15.1.0")}
 ${chalk.gray("AI-Native Development Platform")}
 ${chalk.gray("Generate • Chat • Preview • Deploy • Evolve")}
 `;
@@ -73,7 +73,7 @@ const program = new Command();
 program
     .name("helix")
     .description("Helix - AI-Native Development Platform")
-    .version("15.0.0")
+    .version("15.1.0")
     .addHelpText("before", banner);
 
 // ============================================================================
@@ -182,6 +182,154 @@ program
         } else {
             console.log(chalk.cyan("🌐 Target: Next.js Web App"));
             await spawnApp(prompt, spawnOptions, constitutionContent);
+        }
+    });
+
+// ============================================================================
+// V15.1 COMMANDS: Permissions Engine
+// ============================================================================
+
+const permCmd = program
+    .command("permissions")
+    .alias("perm")
+    .description("Manage chat-mode permissions (mode + rules) in ~/.helix/settings.json");
+
+permCmd
+    .command("list")
+    .description("Show current mode and rules")
+    .action(async () => {
+        console.log(banner);
+        const { readPermissionSettings } = await import("../chat/permissions/store");
+        const perms = readPermissionSettings();
+        console.log(chalk.bold.cyan(`\nMode: ${perms.mode}`));
+        if (perms.rules.length === 0) {
+            console.log(chalk.gray("  (no rules)"));
+            return;
+        }
+        for (const r of perms.rules) {
+            const a = r.action === "deny" ? chalk.red(r.action) : r.action === "allow" ? chalk.green(r.action) : chalk.yellow(r.action);
+            const argMatch = r.argMatch ? chalk.gray("  args:" + JSON.stringify(r.argMatch)) : "";
+            const note = r.note ? chalk.gray("  — " + r.note) : "";
+            console.log(`  ${a.padEnd(15)} ${chalk.bold(r.tool)}${argMatch}${note}`);
+        }
+    });
+
+permCmd
+    .command("mode <mode>")
+    .description("Set permission mode: manual | normal | trusted | yolo")
+    .action(async (mode: string) => {
+        const { ALL_MODES } = await import("../chat/permissions");
+        if (!ALL_MODES.includes(mode as any)) {
+            console.error(chalk.red(`❌ Invalid mode '${mode}'. Choose from: ${ALL_MODES.join(", ")}`));
+            process.exit(1);
+        }
+        const { setMode } = await import("../chat/permissions/store");
+        const perms = setMode(mode as any);
+        console.log(chalk.green(`✅ Mode set to ${perms.mode}`));
+    });
+
+permCmd
+    .command("allow <tool>")
+    .description("Add an allow rule for a tool name pattern (e.g. 'file_*')")
+    .option("--note <text>", "Free-form note shown in /perm output")
+    .action(async (tool: string, options: { note?: string }) => {
+        const { addRule } = await import("../chat/permissions/store");
+        addRule({ tool, action: "allow", note: options.note });
+        console.log(chalk.green(`✅ Added: allow ${tool}`));
+    });
+
+permCmd
+    .command("deny <tool>")
+    .description("Add a deny rule for a tool name pattern")
+    .option("--note <text>", "Free-form note shown in /perm output")
+    .action(async (tool: string, options: { note?: string }) => {
+        const { addRule } = await import("../chat/permissions/store");
+        addRule({ tool, action: "deny", note: options.note });
+        console.log(chalk.green(`✅ Added: deny ${tool}`));
+    });
+
+permCmd
+    .command("ask <tool>")
+    .description("Add an ask rule (force prompt) for a tool name pattern")
+    .option("--note <text>", "Free-form note")
+    .action(async (tool: string, options: { note?: string }) => {
+        const { addRule } = await import("../chat/permissions/store");
+        addRule({ tool, action: "ask", note: options.note });
+        console.log(chalk.green(`✅ Added: ask ${tool}`));
+    });
+
+permCmd
+    .command("remove <tool>")
+    .description("Remove the first rule matching a tool pattern")
+    .option("--action <action>", "Only match rules with this action (allow/deny/ask)")
+    .action(async (tool: string, options: { action?: string }) => {
+        const { removeRule } = await import("../chat/permissions/store");
+        const result = removeRule({ tool, action: options.action as any });
+        if (result.removed) console.log(chalk.green(`✅ Removed rule for ${tool}`));
+        else console.log(chalk.yellow(`No matching rule found for ${tool}`));
+    });
+
+// ============================================================================
+// V15.1 COMMANDS: Council Multi-Model Deliberation
+// ============================================================================
+
+const councilCmd = program
+    .command("council [question...]")
+    .description("Multi-model deliberation via the Council MCP server")
+    .option("-p, --preset <name>", "Use a pre-configured council composition (e.g. 'technical')")
+    .option("-m, --models <list>", "Comma-separated model list (overrides preset)")
+    .option("--list-presets", "Show available council presets and exit")
+    .option("--list-models", "Show available council models and exit")
+    .option("--history [limit]", "Show recent deliberations and exit")
+    .action(async (
+        question: string[] | undefined,
+        options: { preset?: string; models?: string; listPresets?: boolean; listModels?: boolean; history?: string | boolean }
+    ) => {
+        console.log(banner);
+        const { CouncilClient } = await import("../council");
+        const { formatVerdict, formatPresets, formatHistory } = await import("../council/formatter");
+        const client = new CouncilClient();
+
+        // Probe availability up front for a clearer error message
+        const avail = await client.availability();
+        if (!avail.available) {
+            console.error(chalk.red(`❌ Council unavailable: ${avail.reason || "unknown"}`));
+            process.exit(1);
+        }
+        console.log(chalk.gray(`Council server: ${avail.server} (${avail.tools?.length || 0} tools)`));
+
+        try {
+            if (options.listPresets) {
+                const presets = await client.getPresets();
+                console.log("\n" + formatPresets(presets));
+                return;
+            }
+            if (options.listModels) {
+                const models = await client.listModels();
+                console.log("\n" + chalk.bold.cyan("Council models:") + "\n  " + models.join("\n  "));
+                return;
+            }
+            if (options.history !== undefined) {
+                const limit = typeof options.history === "string" ? parseInt(options.history, 10) || 10 : 10;
+                const items = await client.getHistory(limit);
+                console.log("\n" + formatHistory(items));
+                return;
+            }
+
+            const q = (question || []).join(" ").trim();
+            if (!q) {
+                console.error(chalk.red("❌ Provide a question. Try: helix council \"Postgres or MongoDB for this schema?\""));
+                process.exit(1);
+            }
+            console.log(chalk.cyan(`\nDeliberating: "${q}"`) + (options.preset ? chalk.gray(` (preset: ${options.preset})`) : ""));
+            const verdict = await client.deliberate(q, {
+                preset: options.preset,
+                models: options.models ? options.models.split(",").map(s => s.trim()).filter(Boolean) : undefined,
+            });
+            console.log("\n" + formatVerdict(verdict));
+        } catch (e: any) {
+            console.error(chalk.red(`Council error: ${e?.message || e}`));
+            process.exit(1);
         }
     });
 
@@ -302,8 +450,10 @@ program
     .description("Enter interactive agent mode (REPL with tool use)")
     .option("-m, --model <model>", "AI model to use")
     .option("-i, --include-directories <dirs>", "Comma-separated extra context directories")
-    .option("--trust", "Auto-approve destructive tool calls (use with care)")
-    .action(async (options: { model?: string; includeDirectories?: string; trust?: boolean }) => {
+    .option("--trust", "Run in 'trusted' mode (only sensitive tools prompt)")
+    .option("--yolo", "Run in 'yolo' mode (auto-approve everything — be careful)")
+    .option("--manual", "Run in 'manual' mode (prompt for every tool call)")
+    .action(async (options: { model?: string; includeDirectories?: string; trust?: boolean; yolo?: boolean; manual?: boolean }) => {
         console.log(banner);
         if (!process.env.OPENROUTER_API_KEY) {
             console.error(chalk.red("❌ OPENROUTER_API_KEY not found in environment"));
@@ -313,10 +463,15 @@ program
         const extraDirs = options.includeDirectories
             ? options.includeDirectories.split(",").map(s => s.trim()).filter(Boolean)
             : [];
+        const mode = options.yolo ? "yolo"
+            : options.trust ? "trusted"
+            : options.manual ? "manual"
+            : undefined;
         await chat({
             model: options.model,
             extraDirs,
-            autoApprove: !!options.trust,
+            permissionMode: mode,
+            autoApprove: !!options.yolo,
         });
     });
 
@@ -674,6 +829,66 @@ pluginCmd
     .action(async (name: string) => {
         const registry = getRegistry();
         await registry.installPlugin(name);
+    });
+
+// ── Plugins v2: chat tool plugins ──────────────────────────────────
+pluginCmd
+    .command("chat-list")
+    .description("List installed chat tool plugins (helix-tool-*) and the tools they expose")
+    .action(async () => {
+        console.log(banner);
+        const { ToolRegistry } = await import("../chat/tools");
+        const { loadChatPlugins } = await import("../plugins/chat_plugins");
+        const tmp = new ToolRegistry();
+        const result = await loadChatPlugins(tmp);
+        if (result.plugins.length === 0) {
+            console.log(chalk.yellow("No chat plugins installed."));
+            console.log(chalk.gray("Add one with: helix plugin chat-add helix-tool-<name>"));
+            return;
+        }
+        for (const lp of result.plugins) {
+            console.log(`${chalk.bold.cyan(lp.plugin.name)} ${chalk.gray("v" + lp.plugin.version)}`);
+            if (lp.plugin.description) console.log(chalk.gray("  " + lp.plugin.description));
+            console.log(chalk.gray("  tools: " + lp.registered.join(", ")));
+        }
+        for (const err of result.errors) {
+            console.log(chalk.red(`✗ ${err.source}: ${err.error}`));
+        }
+    });
+
+pluginCmd
+    .command("chat-add <package>")
+    .description("Install a chat plugin from npm and register it in ~/.helix/settings.json")
+    .action(async (pkgName: string) => {
+        console.log(banner);
+        const execa = (await import("execa")).default;
+        try {
+            console.log(chalk.cyan(`📦 Installing ${pkgName}...`));
+            await execa("npm", ["install", pkgName], { stdio: "inherit" });
+        } catch (e: any) {
+            console.error(chalk.red(`❌ npm install failed: ${e?.message || e}`));
+            process.exit(1);
+        }
+        const { loadSettings, saveSettings } = await import("../mcp/config");
+        const settings = loadSettings();
+        const list = Array.isArray((settings as any).chatPlugins) ? (settings as any).chatPlugins : [];
+        if (!list.includes(pkgName)) list.push(pkgName);
+        (settings as any).chatPlugins = list;
+        saveSettings(settings);
+        console.log(chalk.green(`✅ Registered ${pkgName} as a chat plugin.`));
+    });
+
+pluginCmd
+    .command("chat-remove <package>")
+    .description("Unregister a chat plugin from ~/.helix/settings.json (does not uninstall the package)")
+    .action(async (pkgName: string) => {
+        const { loadSettings, saveSettings } = await import("../mcp/config");
+        const settings = loadSettings();
+        const list = Array.isArray((settings as any).chatPlugins) ? (settings as any).chatPlugins : [];
+        const next = list.filter((s: string) => s !== pkgName);
+        (settings as any).chatPlugins = next;
+        saveSettings(settings);
+        console.log(chalk.green(`✅ Unregistered ${pkgName}.`));
     });
 
 // Keep old alias for backward compat

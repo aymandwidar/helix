@@ -16,6 +16,7 @@ import { getCostSummary } from "../openrouter";
 import { HookManager } from "./hooks";
 import { McpRegistry } from "../mcp/registry";
 import { bridgeAllAutoServers } from "../mcp/tool_bridge";
+import { PermissionEngine, PermissionMode, ALL_MODES } from "./permissions";
 
 export interface ReplOptions {
     cwd?: string;
@@ -27,6 +28,8 @@ export interface ReplOptions {
     stream?: boolean;
     /** Skip MCP autoConnect (e.g. for tests / offline use). */
     noMcp?: boolean;
+    /** Override the saved permission mode for this session. */
+    permissionMode?: PermissionMode;
 }
 
 const HELP_TEXT = `${chalk.cyan("Slash commands:")}
@@ -41,6 +44,10 @@ const HELP_TEXT = `${chalk.cyan("Slash commands:")}
   ${chalk.bold("/mcp")}         List configured MCP servers and their status
   ${chalk.bold("/remember")}    Save a fact to cognitive memory (requires CMM)
   ${chalk.bold("/recall")}      Search cognitive memory for a topic (requires CMM)
+  ${chalk.bold("/council")}     Send a question to Council for multi-model deliberation
+  ${chalk.bold("/perm")}        Show or edit permissions (e.g. /perm mode trusted)
+  ${chalk.bold("/yolo")}        Switch to yolo mode (auto-approve everything) for this session
+  ${chalk.bold("/manual")}      Switch to manual mode (ask for every tool call) for this session
 
 ${chalk.cyan("Inline routing:")}
   ${chalk.bold("@<server> <command>")}   Route directly to an MCP server (e.g. @memory search "prisma")
@@ -54,6 +61,18 @@ export async function startRepl(options: ReplOptions = {}): Promise<void> {
     const hooks = HookManager.fromSettings();
     const display = options.display || defaultDisplay;
     const stream = options.stream !== false;
+    const permissions = PermissionEngine.fromSettings(undefined, options.permissionMode);
+
+    // Auto-load chat plugins (helix-tool-* packages)
+    try {
+        const { loadChatPlugins } = await import("../plugins/chat_plugins");
+        const loaded = await loadChatPlugins(registry, cwd);
+        if (loaded.added.length > 0) {
+            display.info(chalk.gray(`plugins: loaded ${loaded.added.length} tool(s) from ${loaded.plugins.length} chat plugin(s)`));
+        }
+    } catch {
+        // optional
+    }
 
     let mcp: McpRegistry | undefined;
     if (!options.noMcp) {
@@ -80,6 +99,7 @@ export async function startRepl(options: ReplOptions = {}): Promise<void> {
     if (hooks.list().length > 0) {
         display.info(chalk.gray(`hooks: ${hooks.list().length} configured`));
     }
+    display.info(chalk.gray(`permissions: ${permissions.mode}${permissions.rules.length ? ` (${permissions.rules.length} rule${permissions.rules.length === 1 ? "" : "s"})` : ""}`));
     process.stdout.write("\n");
 
     const rl = readline.createInterface({
@@ -94,7 +114,7 @@ export async function startRepl(options: ReplOptions = {}): Promise<void> {
         if (!input) { rl.prompt(); return; }
 
         if (input.startsWith("/")) {
-            const exit = await handleSlashCommand(input, { context, registry, checkpoints, display, mcp });
+            const exit = await handleSlashCommand(input, { context, registry, checkpoints, display, mcp, permissions });
             if (exit) { rl.close(); return; }
             rl.prompt();
             return;
@@ -119,6 +139,7 @@ export async function startRepl(options: ReplOptions = {}): Promise<void> {
                 model: options.model,
                 autoApprove: options.autoApprove,
                 hooks,
+                permissions,
                 stream,
                 onStream: stream ? (chunk: string) => process.stdout.write(chunk) : undefined,
             });
@@ -143,6 +164,7 @@ interface SlashCtx {
     checkpoints: CheckpointManager;
     display: Display;
     mcp?: McpRegistry;
+    permissions: PermissionEngine;
 }
 
 async function handleSlashCommand(line: string, ctx: SlashCtx): Promise<boolean> {
@@ -234,10 +256,103 @@ async function handleSlashCommand(line: string, ctx: SlashCtx): Promise<boolean>
             await callMemoryTool(ctx, "search_memory", { query });
             return false;
         }
+        case "council": {
+            const question = rest.join(" ").trim();
+            if (!question) {
+                ctx.display.warn("Usage: /council <question>");
+                return false;
+            }
+            await runCouncilDeliberation(ctx, question);
+            return false;
+        }
+        case "perm":
+        case "permission":
+        case "permissions": {
+            await handlePermCommand(ctx, rest);
+            return false;
+        }
+        case "yolo": {
+            ctx.permissions.mode = "yolo";
+            ctx.display.warn("⚠ Mode → yolo. All tool calls will auto-approve for this session.");
+            return false;
+        }
+        case "manual": {
+            ctx.permissions.mode = "manual";
+            ctx.display.info("Mode → manual. Every tool call will prompt.");
+            return false;
+        }
+        case "trusted": {
+            ctx.permissions.mode = "trusted";
+            ctx.display.info("Mode → trusted. Only sensitive tools (shell_exec, deploy_app, MCP) will prompt.");
+            return false;
+        }
         default:
             ctx.display.warn(`Unknown command: /${cmd} (try /help)`);
             return false;
     }
+}
+
+async function runCouncilDeliberation(ctx: SlashCtx, question: string): Promise<void> {
+    try {
+        const { CouncilClient } = await import("../council");
+        const { formatVerdict } = await import("../council/formatter");
+        const client = new CouncilClient();
+        const avail = await client.availability();
+        if (!avail.available) {
+            ctx.display.warn(`Council unavailable: ${avail.reason || "unknown"}`);
+            return;
+        }
+        ctx.display.info(chalk.gray(`Deliberating with ${avail.server}...`));
+        const verdict = await client.deliberate(question);
+        ctx.display.raw("\n" + formatVerdict(verdict) + "\n");
+    } catch (e: any) {
+        ctx.display.error(`council: ${e?.message || e}`);
+    }
+}
+
+async function handlePermCommand(ctx: SlashCtx, rest: string[]): Promise<void> {
+    const sub = rest[0];
+    if (!sub) {
+        ctx.display.raw(formatPermissionState(ctx.permissions) + "\n");
+        return;
+    }
+    if (sub === "mode") {
+        const mode = rest[1];
+        if (!mode || !ALL_MODES.includes(mode as PermissionMode)) {
+            ctx.display.warn(`Usage: /perm mode <${ALL_MODES.join("|")}>`);
+            return;
+        }
+        ctx.permissions.mode = mode as PermissionMode;
+        ctx.display.info(`Mode → ${mode} (session-only; persist with: helix permissions mode ${mode})`);
+        return;
+    }
+    if (sub === "allow" || sub === "deny" || sub === "ask") {
+        const tool = rest[1];
+        if (!tool) {
+            ctx.display.warn(`Usage: /perm ${sub} <tool-pattern> [note...]`);
+            return;
+        }
+        const note = rest.slice(2).join(" ") || undefined;
+        ctx.permissions.addRule({ tool, action: sub, note });
+        ctx.display.info(`Added rule: ${sub} ${tool}${note ? " — " + note : ""} (session-only)`);
+        return;
+    }
+    ctx.display.warn("Usage: /perm | /perm mode <mode> | /perm <allow|deny|ask> <tool>");
+}
+
+function formatPermissionState(engine: PermissionEngine): string {
+    const lines: string[] = [chalk.bold.cyan(`Permissions — mode: ${engine.mode}`)];
+    if (engine.rules.length === 0) {
+        lines.push(chalk.gray("  (no rules)"));
+        return lines.join("\n");
+    }
+    for (const r of engine.rules) {
+        const action = r.action === "deny" ? chalk.red(r.action) : r.action === "allow" ? chalk.green(r.action) : chalk.yellow(r.action);
+        const argMatch = r.argMatch ? chalk.gray(" args:" + JSON.stringify(r.argMatch)) : "";
+        const note = r.note ? chalk.gray(" — " + r.note) : "";
+        lines.push(`  ${action.padEnd(15)} ${chalk.bold(r.tool)}${argMatch}${note}`);
+    }
+    return lines.join("\n");
 }
 
 async function callMemoryTool(ctx: SlashCtx, candidate: string, args: Record<string, unknown>): Promise<void> {
