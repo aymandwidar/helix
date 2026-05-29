@@ -63,9 +63,9 @@ import { evolveCodebase } from "../commands/evolve";
 const banner = `
 ${chalk.cyan("╦ ╦╔═╗╦  ╦═╗ ╦")}
 ${chalk.cyan("╠═╣║╣ ║  ║╔╩╦╝")}
-${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v13.0.0")}
+${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v14.0.0")}
 ${chalk.gray("AI-Native Development Platform")}
-${chalk.gray("Generate • Preview • Deploy • Evolve")}
+${chalk.gray("Generate • Chat • Preview • Deploy • Evolve")}
 `;
 
 const program = new Command();
@@ -73,7 +73,7 @@ const program = new Command();
 program
     .name("helix")
     .description("Helix - AI-Native Development Platform")
-    .version("13.0.0")
+    .version("14.0.0")
     .addHelpText("before", banner);
 
 // ============================================================================
@@ -183,6 +183,58 @@ program
             console.log(chalk.cyan("🌐 Target: Next.js Web App"));
             await spawnApp(prompt, spawnOptions, constitutionContent);
         }
+    });
+
+// ============================================================================
+// V14.0 COMMANDS: Interactive Agent Mode
+// ============================================================================
+
+program
+    .command("chat")
+    .description("Enter interactive agent mode (REPL with tool use)")
+    .option("-m, --model <model>", "AI model to use")
+    .option("-i, --include-directories <dirs>", "Comma-separated extra context directories")
+    .option("--trust", "Auto-approve destructive tool calls (use with care)")
+    .action(async (options: { model?: string; includeDirectories?: string; trust?: boolean }) => {
+        console.log(banner);
+        if (!process.env.OPENROUTER_API_KEY) {
+            console.error(chalk.red("❌ OPENROUTER_API_KEY not found in environment"));
+            process.exit(1);
+        }
+        const { chat } = await import("../chat");
+        const extraDirs = options.includeDirectories
+            ? options.includeDirectories.split(",").map(s => s.trim()).filter(Boolean)
+            : [];
+        await chat({
+            model: options.model,
+            extraDirs,
+            autoApprove: !!options.trust,
+        });
+    });
+
+program
+    .command("ask <prompt>")
+    .description("One-shot agent query (headless / scripting mode)")
+    .option("-m, --model <model>", "AI model to use")
+    .option("-i, --include-directories <dirs>", "Comma-separated extra context directories")
+    .option("--output-format <format>", "Output format: 'text' or 'json'", "text")
+    .option("--trust", "Auto-approve destructive tool calls")
+    .action(async (prompt: string, options: { model?: string; includeDirectories?: string; outputFormat?: string; trust?: boolean }) => {
+        if (!process.env.OPENROUTER_API_KEY) {
+            console.error(chalk.red("❌ OPENROUTER_API_KEY not found in environment"));
+            process.exit(1);
+        }
+        const { ask } = await import("../chat");
+        const extraDirs = options.includeDirectories
+            ? options.includeDirectories.split(",").map(s => s.trim()).filter(Boolean)
+            : [];
+        const format = (options.outputFormat === "json" ? "json" : "text") as "text" | "json";
+        await ask(prompt, {
+            model: options.model,
+            extraDirs,
+            outputFormat: format,
+            autoApprove: !!options.trust || format === "json",
+        });
     });
 
 // ============================================================================
@@ -1104,6 +1156,11 @@ program
 
 program.addHelpText("after", `
 ${chalk.cyan("Examples:")}
+  ${chalk.gray("# Interactive agent mode (v14):")}
+  $ helix chat                          ${chalk.gray("# REPL with tool use")}
+  $ helix ask "explain this codebase"   ${chalk.gray("# one-shot headless query")}
+  $ helix ask "..." --output-format json
+
   ${chalk.gray("# ONE-SHOT: Complete app from natural language")}
   $ helix spawn "Expense tracker for my small business"
   $ helix spawn "Task app" --target flutter --db supabase --ai openrouter

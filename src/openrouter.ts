@@ -87,8 +87,40 @@ export const RESEARCH_MODEL = process.env.HELIX_RESEARCH_MODEL || "meta-llama/ll
 export const LOCAL_MODEL = "ollama/local";
 
 export interface OpenRouterMessage {
-    role: "system" | "user" | "assistant";
+    role: "system" | "user" | "assistant" | "tool";
     content: string;
+    tool_calls?: ToolCall[];
+    tool_call_id?: string;
+    name?: string;
+}
+
+export interface ToolCall {
+    id: string;
+    type: "function";
+    function: {
+        name: string;
+        arguments: string;
+    };
+}
+
+export interface ToolSchema {
+    type: "function";
+    function: {
+        name: string;
+        description: string;
+        parameters: {
+            type: "object";
+            properties: Record<string, any>;
+            required?: string[];
+        };
+    };
+}
+
+export interface ChatTurnResult {
+    content: string;
+    toolCalls: ToolCall[];
+    finishReason: string;
+    usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 }
 
 export interface OpenRouterResponse {
@@ -293,6 +325,109 @@ export async function createCompletion(
                 continue;
             }
             // Re-throw non-retryable errors
+            if (lastError && !RETRYABLE_STATUS_CODES.has(parseInt(lastError.message.match(/error: (\d+)/)?.[1] || "0"))) {
+                throw err;
+            }
+            lastError = err;
+        }
+    }
+
+    throw lastError || new Error("OpenRouter API request failed after all retries");
+}
+
+/**
+ * Multi-turn chat with tool-use support.
+ *
+ * Used by the interactive agent loop in `helix chat`. Unlike createCompletion(),
+ * this preserves a full message history (including assistant tool_calls and tool
+ * results) and exposes the model's tool_calls so the caller can dispatch them.
+ */
+export async function chatWithTools(
+    messages: OpenRouterMessage[],
+    tools: ToolSchema[],
+    options: CompletionOptions = {}
+): Promise<ChatTurnResult> {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) {
+        throw new Error("OPENROUTER_API_KEY not found in environment");
+    }
+
+    const model = options.model || DEFAULT_MODEL;
+    const maxTokens = options.maxTokens || 4096;
+    const temperature = options.temperature ?? 0.7;
+
+    const body: Record<string, any> = {
+        model,
+        messages,
+        max_tokens: maxTokens,
+        temperature,
+    };
+    if (tools.length > 0) {
+        body.tools = tools;
+        body.tool_choice = "auto";
+    }
+    if (options.thinking) {
+        body.reasoning = { effort: "high" };
+    }
+
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+            const delay = RETRY_DELAYS_MS[attempt - 1];
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+        try {
+            const response = await fetch(OPENROUTER_BASE_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${apiKey}`,
+                    "HTTP-Referer": "https://helix-lang.dev",
+                    "X-Title": "Helix CLI",
+                },
+                body: JSON.stringify(body),
+                signal: controller.signal,
+            });
+            clearTimeout(timeout);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                lastError = new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
+                if (!RETRYABLE_STATUS_CODES.has(response.status)) {
+                    throw lastError;
+                }
+                continue;
+            }
+
+            const data = (await response.json()) as any;
+            if (!data.choices || data.choices.length === 0) {
+                throw new Error("No response from OpenRouter API");
+            }
+
+            const choice = data.choices[0];
+            const message = choice.message || {};
+            const result: ChatTurnResult = {
+                content: typeof message.content === "string" ? message.content : "",
+                toolCalls: Array.isArray(message.tool_calls) ? message.tool_calls : [],
+                finishReason: choice.finish_reason || "stop",
+                usage: data.usage,
+            };
+
+            if (data.usage) {
+                trackCost(model, data.usage);
+            }
+
+            return result;
+        } catch (err: any) {
+            clearTimeout(timeout);
+            if (err.name === "AbortError") {
+                lastError = new Error(`OpenRouter API request timed out after ${API_TIMEOUT_MS}ms`);
+                continue;
+            }
             if (lastError && !RETRYABLE_STATUS_CODES.has(parseInt(lastError.message.match(/error: (\d+)/)?.[1] || "0"))) {
                 throw err;
             }
