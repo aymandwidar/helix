@@ -63,7 +63,7 @@ import { evolveCodebase } from "../commands/evolve";
 const banner = `
 ${chalk.cyan("╦ ╦╔═╗╦  ╦═╗ ╦")}
 ${chalk.cyan("╠═╣║╣ ║  ║╔╩╦╝")}
-${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v15.2.0")}
+${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v16.0.0")}
 ${chalk.gray("AI-Native Development Platform")}
 ${chalk.gray("Generate • Chat • Preview • Deploy • Evolve")}
 `;
@@ -73,7 +73,7 @@ const program = new Command();
 program
     .name("helix")
     .description("Helix - AI-Native Development Platform")
-    .version("15.2.0")
+    .version("16.0.0")
     .addHelpText("before", banner);
 
 // ============================================================================
@@ -211,6 +211,207 @@ program
                 return;
             }
             await spawnApp(prompt, spawnOptions, constitutionContent);
+        }
+    });
+
+// ============================================================================
+// V16.0 COMMANDS: Git workflows, themes, usage, recap, verify-visual
+// ============================================================================
+
+const prCmd = program.command("pr").description("AI-assisted GitHub PR workflows");
+
+prCmd
+    .command("create")
+    .description("Open a PR for the current branch with an AI-generated title and body")
+    .option("-b, --base <branch>", "Base branch to compare against (default: detected)")
+    .option("-m, --model <model>", "AI model to use")
+    .option("--print-only", "Print the title/body and gh command instead of running gh")
+    .action(async (options: { base?: string; model?: string; printOnly?: boolean }) => {
+        console.log(banner);
+        if (!process.env.OPENROUTER_API_KEY) {
+            console.error(chalk.red("❌ OPENROUTER_API_KEY not found in environment"));
+            process.exit(1);
+        }
+        const { createPr } = await import("../git");
+        const result = await createPr({
+            cwd: process.cwd(),
+            base: options.base,
+            printOnly: !!options.printOnly,
+            model: options.model,
+        });
+        console.log(chalk.cyan(`\nBranch: ${result.branch || "(unknown)"}  →  Base: ${result.base}`));
+        console.log(chalk.gray(`Diff: ${result.diffPreview || "(none)"}\n`));
+        console.log(chalk.bold("Title: ") + result.title);
+        console.log("\n" + result.body + "\n");
+        if (result.prUrl) console.log(chalk.green(`✅ PR opened: ${result.prUrl}`));
+        else if (result.method === "gh") console.log(chalk.yellow("gh ran but no PR URL was extracted from output."));
+        else if (result.method === "no-gh") console.log(chalk.yellow("`gh` CLI not installed — body printed above; install with: brew install gh"));
+    });
+
+prCmd
+    .command("review")
+    .description("AI code review of the current branch's diff vs base")
+    .option("-b, --base <branch>", "Base branch (default: detected)")
+    .option("-m, --model <model>", "AI model to use")
+    .action(async (options: { base?: string; model?: string }) => {
+        console.log(banner);
+        if (!process.env.OPENROUTER_API_KEY) {
+            console.error(chalk.red("❌ OPENROUTER_API_KEY not found in environment"));
+            process.exit(1);
+        }
+        const { reviewPr } = await import("../git");
+        const text = await reviewPr({ cwd: process.cwd(), base: options.base, model: options.model });
+        console.log("\n" + text + "\n");
+    });
+
+program
+    .command("changelog")
+    .description("Generate a CHANGELOG.md section from git history")
+    .option("--since <ref>", "Start from this git ref (default: most recent tag)")
+    .option("--style <style>", "Format: 'conventional' or 'semver'", "conventional")
+    .option("-m, --model <model>", "AI model to use")
+    .option("--dry-run", "Print the section without writing CHANGELOG.md")
+    .action(async (options: any) => {
+        console.log(banner);
+        if (!process.env.OPENROUTER_API_KEY) {
+            console.error(chalk.red("❌ OPENROUTER_API_KEY not found in environment"));
+            process.exit(1);
+        }
+        const { generateChangelog } = await import("../git");
+        const result = await generateChangelog({
+            cwd: process.cwd(),
+            since: options.since,
+            style: options.style,
+            model: options.model,
+            dryRun: !!options.dryRun,
+        });
+        console.log(chalk.cyan(`\n📜 Changelog (${result.commits} commits since ${result.since})\n`));
+        console.log(result.section);
+        if (!options.dryRun) {
+            console.log(chalk.green(`\n${result.merged ? "✅ Merged into" : "✅ Wrote"} ${result.file}`));
+        }
+    });
+
+program
+    .command("branch-protect")
+    .description("Show recommended GitHub branch-protection settings + the gh-api command to apply them")
+    .option("-b, --branch <branch>", "Branch to protect", "main")
+    .option("--checks <list>", "Comma-separated required CI checks", "build,test")
+    .option("--reviews <n>", "Required approving reviews", "1")
+    .action(async (options: { branch: string; checks: string; reviews: string }) => {
+        console.log(banner);
+        const { describeBranchProtection } = await import("../git");
+        const result = await describeBranchProtection({
+            cwd: process.cwd(),
+            branch: options.branch,
+            checks: options.checks.split(",").map(s => s.trim()).filter(Boolean),
+            requiredReviews: parseInt(options.reviews, 10) || 1,
+        });
+        console.log(chalk.cyan(`\nRecommended protection for ${result.repo || "(detect repo)"} branch '${result.branch}':\n`));
+        console.log(JSON.stringify(result.payload, null, 2));
+        console.log(chalk.cyan("\nApply with:\n"));
+        console.log(result.command);
+    });
+
+const themeCmd = program.command("theme").description("Manage chat output themes");
+
+themeCmd
+    .command("list")
+    .description("List available themes (built-in + custom)")
+    .action(async () => {
+        console.log(banner);
+        const { listAvailableThemes, getActiveTheme } = await import("../chat/themes");
+        const all = listAvailableThemes();
+        const active = getActiveTheme();
+        for (const t of all) {
+            const marker = t.name === active.name ? chalk.green("●") : " ";
+            console.log(`  ${marker} ${chalk.bold(t.name)}${t.description ? chalk.gray(" — " + t.description) : ""}`);
+        }
+    });
+
+themeCmd
+    .command("use <name>")
+    .description("Persist a theme as the default in ~/.helix/settings.json")
+    .action(async (name: string) => {
+        const { resolveTheme } = await import("../chat/themes");
+        const { loadSettings, saveSettings } = await import("../mcp/config");
+        const theme = resolveTheme(name);
+        if (theme.name !== name && !["default", "monokai", "solarized-dark", "solarized-light", "high-contrast"].includes(name)) {
+            console.error(chalk.red(`❌ Unknown theme: ${name}`));
+            process.exit(1);
+        }
+        const settings = loadSettings();
+        (settings as any).chatTheme = name;
+        saveSettings(settings);
+        console.log(chalk.green(`✅ Default theme set to '${name}'`));
+    });
+
+program
+    .command("usage")
+    .description("Show usage stats for the most recent chat session")
+    .action(async () => {
+        console.log(banner);
+        const { readMostRecentSession, formatUsage } = await import("../chat/usage");
+        const entry = readMostRecentSession();
+        if (!entry) {
+            console.log(chalk.yellow("No session logs yet. Use `helix chat` first."));
+            return;
+        }
+        console.log("\n" + formatUsage(entry.snapshot) + "\n");
+    });
+
+program
+    .command("recap")
+    .description("Print recent session recap files")
+    .option("-n, --count <n>", "How many to print", "1")
+    .action(async (options: { count: string }) => {
+        console.log(banner);
+        const dir = path.join(process.cwd(), ".helix", "recaps");
+        if (!fs.existsSync(dir)) {
+            console.log(chalk.yellow("No recap files. Use /recap --save in chat to create one."));
+            return;
+        }
+        const files = fs.readdirSync(dir).filter(f => f.endsWith(".md")).sort().reverse();
+        const count = Math.max(1, parseInt(options.count, 10) || 1);
+        for (const f of files.slice(0, count)) {
+            console.log(chalk.cyan(`\n— ${f} —\n`));
+            console.log(fs.readFileSync(path.join(dir, f), "utf-8"));
+        }
+    });
+
+program
+    .command("verify-visual")
+    .description("Capture a screenshot of the running app and diff against the baseline")
+    .option("--url <url>", "URL to capture (default: helix.config.json previewUrl or http://localhost:3000)")
+    .option("--threshold <n>", "Pixel-diff threshold 0..1", "0.1")
+    .action(async (options: { url?: string; threshold: string }) => {
+        console.log(banner);
+        const { verifyVisual } = await import("../quality/visual");
+        const result = await verifyVisual({
+            cwd: process.cwd(),
+            url: options.url,
+            threshold: parseFloat(options.threshold) || 0.1,
+        });
+        switch (result.status) {
+            case "no-deps":
+                console.log(chalk.yellow(result.message || "Optional dependencies missing."));
+                process.exit(2);
+                break;
+            case "baseline-created":
+                console.log(chalk.green(`✅ Captured baseline: ${result.baselinePath}`));
+                break;
+            case "match":
+                console.log(chalk.green(`✅ Visual match (${result.totalPixels} pixels)`));
+                break;
+            case "mismatch":
+                console.log(chalk.red(`✗ Visual mismatch: ${result.mismatchedPixels}/${result.totalPixels} pixels`));
+                if (result.diffPath) console.log(chalk.gray(`   diff: ${result.diffPath}`));
+                process.exit(1);
+                break;
+            case "error":
+                console.error(chalk.red(`❌ ${result.message || "unknown error"}`));
+                process.exit(1);
+                break;
         }
     });
 
@@ -940,10 +1141,48 @@ program
 program
     .command("deploy")
     .description("One-command deployment to cloud platforms")
-    .option("-p, --platform <platform>", "Deployment platform: vercel, firebase, netlify", "vercel")
+    .option("-p, --platform <platform>", "Deployment platform: vercel, firebase, netlify, railway", "vercel")
     .option("-t, --token <token>", "Auth token for the platform (optional)")
-    .action(async (options: { platform: string; token?: string }) => {
+    .option("--vercel", "Deploy to Vercel via the v16 adapter (env-sync, URL extraction)")
+    .option("--netlify", "Deploy to Netlify via the v16 adapter")
+    .option("--railway", "Deploy to Railway via the v16 adapter")
+    .option("--skip-env-sync", "Don't push .env contents to the provider")
+    .option("--env-file <path>", ".env file to read for sync", ".env")
+    .option("--dry-run", "Print what would happen without running")
+    .action(async (options: any) => {
         console.log(banner);
+        // v16 adapter path: pick the first --vercel/--netlify/--railway flag, or
+        // honor --platform=railway (new in v16). Legacy --platform=firebase stays
+        // routed through the original deploy() to avoid breaking changes.
+        const v16Target = options.vercel ? "vercel"
+            : options.netlify ? "netlify"
+            : options.railway ? "railway"
+            : (options.platform === "railway" || options.platform === "netlify" || options.platform === "vercel") ? options.platform
+            : null;
+
+        if (v16Target && options.platform !== "firebase") {
+            const { runDeploy } = await import("../deploy");
+            const cwd = process.cwd();
+            const result = await runDeploy(v16Target as any, {
+                cwd,
+                token: options.token,
+                skipEnvSync: !!options.skipEnvSync,
+                envFile: options.envFile,
+                dryRun: !!options.dryRun,
+            });
+            if (!result.success) {
+                if (result.skippedReason) console.log(chalk.yellow(`⚠  ${result.skippedReason}`));
+                if (result.error) console.error(chalk.red(`❌ ${result.error}`));
+                process.exit(1);
+            }
+            if (result.url) console.log(chalk.green(`\n✅ ${result.target}: ${result.url}`));
+            else console.log(chalk.green(`\n✅ ${result.target}: deployed`));
+            if (typeof result.envPushed === "number" && result.envPushed > 0) {
+                console.log(chalk.gray(`   pushed ${result.envPushed} env var(s)`));
+            }
+            return;
+        }
+
         await deploy(options.platform as DeploymentPlatform, options.token);
     });
 

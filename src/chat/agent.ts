@@ -165,6 +165,12 @@ async function dispatchToolCall(call: ToolCall, opts: AgentOptions, hooks: HookM
 
     display.toolCall(tool.name, args);
 
+    // Sprint 12: track tool usage for /usage dashboard
+    try {
+        const { getActiveTracker } = await import("./usage");
+        getActiveTracker().recordTool(tool.name);
+    } catch { /* ignore */ }
+
     const decision = permissions.evaluate(tool.name, args, !!tool.requiresApproval);
     if (decision.action === "deny") {
         const msg = `Permission denied: ${decision.reason}`;

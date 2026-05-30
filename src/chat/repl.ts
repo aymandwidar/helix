@@ -58,6 +58,12 @@ const HELP_TEXT = `${chalk.cyan("Slash commands:")}
   ${chalk.bold("/teach")}       Append a learned convention to HELIX.md
   ${chalk.bold("/inherit")}     Merge another project's HELIX.md into this one
   ${chalk.bold("/blocks")}      Toggle block (boxed) TUI output
+  ${chalk.bold("/usage")}       Show session usage (tools, tokens, cost, checkpoints)
+  ${chalk.bold("/recap")}       Generate a session recap (--save to write to .helix/recaps)
+  ${chalk.bold("/theme")}       /theme [name|save <name>] — switch chat theme
+  ${chalk.bold("/pr")}          /pr create | /pr review — AI PR title/body or review
+  ${chalk.bold("/changelog")}   Generate a changelog section (--write to update CHANGELOG.md)
+  ${chalk.bold("/verify-visual")}   Capture/diff a screenshot of the running app (optional deps)
 
 ${chalk.cyan("Inline routing:")}
   ${chalk.bold("@<server> <command>")}   Route directly to an MCP server (e.g. @memory search "prisma")
@@ -83,6 +89,18 @@ export async function startRepl(options: ReplOptions = {}): Promise<void> {
     } catch {
         // optional
     }
+
+    // Sprint 12: load persisted theme + reset usage tracker for this session.
+    try {
+        const { loadSettings } = await import("../mcp/config");
+        const { resolveTheme, setActiveTheme } = await import("./themes");
+        const themeName = (loadSettings() as any).chatTheme;
+        if (typeof themeName === "string" && themeName) setActiveTheme(resolveTheme(themeName));
+    } catch { /* ignore */ }
+    try {
+        const { resetActiveTracker } = await import("./usage");
+        resetActiveTracker();
+    } catch { /* ignore */ }
 
     let mcp: McpRegistry | undefined;
     if (!options.noMcp) {
@@ -163,6 +181,22 @@ export async function startRepl(options: ReplOptions = {}): Promise<void> {
 
     rl.on("close", async () => {
         if (mcp) await mcp.closeAll();
+        // Sprint 12: write session log + offer recap when session was substantial
+        try {
+            const { getActiveTracker, writeSessionLog } = await import("./usage");
+            const snap = getActiveTracker().snapshot();
+            writeSessionLog(snap, undefined);
+            const turns = snap.messages.user;
+            if (turns >= 3) {
+                const ok = await display.confirm(`save session recap to .helix/recaps?`);
+                if (ok) {
+                    const { generateRecap, saveRecap } = await import("../quality/recap");
+                    const recap = await generateRecap({ messages: context.messages() });
+                    const file = saveRecap({ cwd, recap });
+                    display.info(`recap saved: ${file}`);
+                }
+            }
+        } catch { /* never block exit */ }
         printSessionSummary(display);
         process.exit(0);
     });
@@ -434,6 +468,88 @@ async function handleSlashCommand(line: string, ctx: SlashCtx): Promise<boolean>
                 Object.assign(ctx.display, blockDisplay(ctx.display));
                 ctx.display.info("blocks on");
             }
+            return false;
+        }
+        case "usage": {
+            const { getActiveTracker, formatUsage } = await import("./usage");
+            ctx.display.raw("\n" + formatUsage(getActiveTracker().snapshot()) + "\n");
+            return false;
+        }
+        case "recap": {
+            try {
+                const { generateRecap, saveRecap } = await import("../quality/recap");
+                ctx.display.info("Generating recap...");
+                const recap = await generateRecap({ messages: ctx.context.messages() });
+                ctx.display.raw("\n" + recap + "\n");
+                if (rest.includes("--save") || rest.includes("save")) {
+                    const file = saveRecap({ cwd: ctx.context.cwd, recap });
+                    ctx.display.info(`saved: ${file}`);
+                }
+            } catch (e: any) { ctx.display.error(e?.message || String(e)); }
+            return false;
+        }
+        case "theme": {
+            const sub = rest[0];
+            const { listAvailableThemes, getActiveTheme, setActiveTheme, resolveTheme, saveCustomTheme } = await import("./themes");
+            if (!sub) {
+                const all = listAvailableThemes();
+                const active = getActiveTheme();
+                for (const t of all) {
+                    const m = t.name === active.name ? chalk.green("●") : " ";
+                    ctx.display.raw(`  ${m} ${chalk.bold(t.name)}${t.description ? chalk.gray(" — " + t.description) : ""}\n`);
+                }
+                return false;
+            }
+            if (sub === "save") {
+                const name = rest[1];
+                if (!name) { ctx.display.warn("Usage: /theme save <name>"); return false; }
+                const file = saveCustomTheme({ ...getActiveTheme(), name });
+                ctx.display.info(`saved theme to ${file}`);
+                return false;
+            }
+            const theme = resolveTheme(sub);
+            setActiveTheme(theme);
+            ctx.display.info(`theme → ${theme.name}`);
+            return false;
+        }
+        case "pr": {
+            const sub = rest[0];
+            try {
+                if (sub === "create") {
+                    const { createPr } = await import("../git");
+                    const result = await createPr({ cwd: ctx.context.cwd, printOnly: true });
+                    ctx.display.raw(`\nTitle: ${result.title}\n\n${result.body}\n`);
+                } else {
+                    const { reviewPr } = await import("../git");
+                    ctx.display.info("Reviewing branch diff...");
+                    const text = await reviewPr({ cwd: ctx.context.cwd });
+                    ctx.display.raw("\n" + text + "\n");
+                }
+            } catch (e: any) { ctx.display.error(e?.message || String(e)); }
+            return false;
+        }
+        case "changelog": {
+            try {
+                const { generateChangelog } = await import("../git");
+                const result = await generateChangelog({ cwd: ctx.context.cwd, dryRun: !rest.includes("--write") });
+                ctx.display.raw("\n" + result.section + "\n");
+                if (rest.includes("--write")) ctx.display.info(`wrote ${result.file}`);
+                else ctx.display.info("(dry-run; pass --write to update CHANGELOG.md)");
+            } catch (e: any) { ctx.display.error(e?.message || String(e)); }
+            return false;
+        }
+        case "verify-visual":
+        case "verifyvisual": {
+            try {
+                const { verifyVisual } = await import("../quality/visual");
+                const url = rest[0];
+                const result = await verifyVisual({ cwd: ctx.context.cwd, url });
+                ctx.display.raw(`\nstatus: ${result.status}\n` +
+                    (result.url ? `url: ${result.url}\n` : "") +
+                    (result.message ? `note: ${result.message}\n` : "") +
+                    (result.mismatchedPixels !== undefined ? `mismatched: ${result.mismatchedPixels}/${result.totalPixels}\n` : "") +
+                    (result.diffPath ? `diff: ${result.diffPath}\n` : ""));
+            } catch (e: any) { ctx.display.error(e?.message || String(e)); }
             return false;
         }
         default:
