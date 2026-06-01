@@ -27,6 +27,16 @@ import * as path from "path";
 // Load environment variables
 dotenv.config();
 
+// Sprint 14: re-entry as a background worker. Done before commander parses
+// argv so the worker process never executes the CLI banner.
+if (process.env.HELIX_BG_WORKER === "1") {
+    void (async () => {
+        const { runWorker } = await import("../bg/daemon");
+        await runWorker();
+        process.exit(0);
+    })();
+}
+
 // Import core modules
 import { conductResearch } from "../researcher";
 import { draftBlueprint } from "../architect";
@@ -63,7 +73,7 @@ import { evolveCodebase } from "../commands/evolve";
 const banner = `
 ${chalk.cyan("╦ ╦╔═╗╦  ╦═╗ ╦")}
 ${chalk.cyan("╠═╣║╣ ║  ║╔╩╦╝")}
-${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v17.0.0")}
+${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v17.1.0")}
 ${chalk.gray("AI-Native Development Platform")}
 ${chalk.gray("Generate • Chat • Preview • Deploy • Evolve")}
 `;
@@ -73,7 +83,7 @@ const program = new Command();
 program
     .name("helix")
     .description("Helix - AI-Native Development Platform")
-    .version("17.0.0")
+    .version("17.1.0")
     .addHelpText("before", banner);
 
 // ============================================================================
@@ -231,6 +241,102 @@ program
                 return;
             }
             await spawnApp(prompt, spawnOptions, constitutionContent);
+        }
+    });
+
+// ============================================================================
+// V17.1 COMMANDS: Background / daemon mode
+// ============================================================================
+
+const bgCmd = program.command("bg").description("Run agent tasks in the background");
+
+bgCmd
+    .command("start <prompt>", { isDefault: true })
+    .description("Start a background agent task and return control to the shell immediately")
+    .option("-l, --label <text>", "Human-readable label")
+    .option("--yolo", "Run with no permission prompts (otherwise: trusted mode)")
+    .option("-m, --model <model>", "AI model to use")
+    .action((prompt: string, options: { label?: string; yolo?: boolean; model?: string }) => {
+        if (!process.env.OPENROUTER_API_KEY) {
+            console.error(chalk.red("❌ OPENROUTER_API_KEY not found in environment"));
+            process.exit(1);
+        }
+        const { startBackgroundTask } = require("../bg") as typeof import("../bg");
+        const result = startBackgroundTask({
+            prompt,
+            cwd: process.cwd(),
+            label: options.label,
+            permissionMode: options.yolo ? "yolo" : "trusted",
+            model: options.model,
+        });
+        if (result.rejected) {
+            console.error(chalk.red(`❌ ${result.rejected}`));
+            process.exit(1);
+        }
+        console.log(chalk.cyan(`⚡ Background task ${chalk.bold(result.meta.id)} started.`));
+        console.log(chalk.gray(`   helix bg status   — see all tasks`));
+        console.log(chalk.gray(`   helix bg attach ${result.meta.id} — stream output`));
+        process.exit(0);
+    });
+
+bgCmd
+    .command("status")
+    .description("List background tasks (running, completed, failed, killed)")
+    .action(async () => {
+        const { statusReport, formatStatus } = await import("../bg");
+        console.log(formatStatus(statusReport()));
+    });
+
+bgCmd
+    .command("attach <id>")
+    .description("Stream output from a running or completed background task")
+    .action(async (id: string) => {
+        const { attachBackgroundTask } = await import("../bg");
+        const result = await attachBackgroundTask({
+            id,
+            follow: true,
+            onLine: line => console.log(line),
+        });
+        if (result.finalState === "missing") {
+            console.error(chalk.red(`No task ${id}`));
+            process.exit(1);
+        }
+        console.log(chalk.gray(`\n[${result.finalState}]`));
+    });
+
+bgCmd
+    .command("kill <id>")
+    .description("Cancel a running background task")
+    .action(async (id: string) => {
+        const { killBackgroundTask } = await import("../bg");
+        const result = killBackgroundTask({ id });
+        if (!result.found) {
+            console.error(chalk.red(`No task ${id}`));
+            process.exit(1);
+        }
+        if (result.signaled) console.log(chalk.green(`✅ Killed ${id}`));
+        else console.log(chalk.yellow(`Task ${id} was already in state '${result.finalState}'`));
+    });
+
+bgCmd
+    .command("logs <id>")
+    .description("Print the full output log of a background task")
+    .action(async (id: string) => {
+        const { logsFor } = await import("../bg");
+        const { meta, output, result } = logsFor(id);
+        if (!meta) {
+            console.error(chalk.red(`No task ${id}`));
+            process.exit(1);
+        }
+        console.log(chalk.cyan(`# ${meta.id}  state=${meta.state}`));
+        console.log(chalk.gray(`# ${meta.startedAt}${meta.finishedAt ? " → " + meta.finishedAt : ""}`));
+        console.log(chalk.gray(`# prompt: ${meta.prompt}`));
+        console.log("\n" + (output || "(no output)"));
+        if (result?.finalText) {
+            console.log(chalk.cyan("\n# final response\n") + result.finalText);
+        }
+        if (result?.error) {
+            console.log(chalk.red("\n# error\n") + result.error);
         }
     });
 

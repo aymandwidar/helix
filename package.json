@@ -1,6 +1,6 @@
 {
   "name": "helix-lang",
-  "version": "17.0.0",
+  "version": "17.1.0",
   "description": "Helix - AI-Native Development Platform with Full-Stack Generation, Interactive Agent Mode, Preview & Deploy",
   "main": "dist/index.js",
   "files": [
