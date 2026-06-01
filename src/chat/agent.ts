@@ -7,13 +7,16 @@
  * hits the iteration cap.
  */
 
-import { chatWithTools, OpenRouterMessage, ToolCall, CompletionOptions } from "../openrouter";
+import { chatWithTools, OpenRouterMessage, ToolCall, CompletionOptions, DEFAULT_MODEL } from "../openrouter";
 import { ToolRegistry, ToolResult } from "./tools";
 import { ChatContext } from "./context";
 import { CheckpointManager } from "./checkpoints";
 import { Display } from "./display";
 import { HookManager, NoopHooks } from "./hooks";
 import { PermissionEngine } from "./permissions";
+import { BudgetManager, predictCallCost, formatBudgetTag } from "../cost";
+import { IterationLimiter } from "../cost/limiter";
+import { autoCompressLines, readAutoCompressThreshold } from "./context/auto_compress";
 
 export interface AgentOptions {
     registry: ToolRegistry;
@@ -31,6 +34,10 @@ export interface AgentOptions {
     onStream?: (chunk: string) => void;
     /** Use streaming mode for chatWithTools. Falls back to non-streaming on error. */
     stream?: boolean;
+    /** Sprint 15: hard cap on total spend across this run. */
+    budget?: BudgetManager;
+    /** Sprint 15: external iteration limiter (overrides maxIterations when set). */
+    iterationLimiter?: IterationLimiter;
 }
 
 export interface AgentRunResult {
@@ -44,6 +51,9 @@ export async function runAgentTurn(userMessage: string, opts: AgentOptions): Pro
     const hooks = opts.hooks || NoopHooks;
     const maxIterations = opts.maxIterations ?? 8;
     const completionOpts: CompletionOptions = { model: opts.model };
+    const limiter = opts.iterationLimiter || (opts.maxIterations != null ? new IterationLimiter(opts.maxIterations) : null);
+    const budget = opts.budget;
+    const compressThreshold = readAutoCompressThreshold();
 
     // pre_prompt hook — may block the entire turn
     const prePrompt = await hooks.run("pre_prompt", {
@@ -66,7 +76,29 @@ export async function runAgentTurn(userMessage: string, opts: AgentOptions): Pro
     let finalText = "";
 
     for (let iter = 0; iter < maxIterations; iter++) {
+        // Sprint 15: iteration cap (only when limiter is supplied or maxIterations was passed).
+        if (limiter) {
+            const check = limiter.next();
+            if (!check.allowed) {
+                display.warn(check.reason || `Iteration limit reached (${limiter.max}).`);
+                return { finalText, iterations: iter, toolCallCount };
+            }
+        }
+
         const messages: OpenRouterMessage[] = context.messages();
+
+        // Sprint 15: budget gate — stop before the next call would exceed the cap.
+        if (budget) {
+            const promptText = messages.map(m => typeof m.content === "string" ? m.content : "").join("\n");
+            const predicted = predictCallCost({ promptText, model: opts.model || DEFAULT_MODEL });
+            const check = budget.canSpend(predicted);
+            if (!check.allowed) {
+                display.warn(`⚠️  Budget limit reached ($${budget.totalUsd.toFixed(2)}). ${check.reason}.`);
+                return { finalText, iterations: iter, toolCallCount };
+            }
+            display.info(`${formatBudgetTag(check.snapshot)}  predicted next: $${predicted.toFixed(6)}`);
+        }
+
         let turn;
         try {
             if (opts.stream && opts.onStream) {
@@ -78,6 +110,23 @@ export async function runAgentTurn(userMessage: string, opts: AgentOptions): Pro
         } catch (err: any) {
             display.error(`Model call failed: ${err?.message || err}`);
             return { finalText, iterations: iter, toolCallCount };
+        }
+
+        // Sprint 15: record actual spend after the call returns.
+        if (budget && turn.usage) {
+            const pricing = (await import("../cost")).predictCallCost({
+                promptText: "",
+                model: opts.model || DEFAULT_MODEL,
+                completionTokens: 0,
+            });
+            // Recompute from real token counts using the same heuristic as cost-predict.
+            const realCost = predictCallCost({
+                promptText: "x".repeat((turn.usage.prompt_tokens || 0) * 4),
+                model: opts.model || DEFAULT_MODEL,
+                completionTokens: turn.usage.completion_tokens || 0,
+            });
+            void pricing; // pricing import is only kept for symmetry; not used directly
+            budget.record(realCost);
         }
 
         context.history.push({
@@ -235,7 +284,19 @@ async function dispatchToolCall(call: ToolCall, opts: AgentOptions, hooks: HookM
     }
 
     const payload: Record<string, unknown> = { success: result.success };
-    if (result.output) payload.output = result.output;
+    if (result.output) {
+        // Sprint 15: auto-compress long shell output before feeding it back to the model.
+        // The user still saw the full output in the terminal — only the model history is trimmed.
+        if (tool.name === "shell_exec") {
+            const compressed = autoCompressLines(result.output, { threshold: readAutoCompressThreshold() });
+            payload.output = compressed.text;
+            if (compressed.compressed) {
+                payload.output_truncated_lines = compressed.truncatedLineCount;
+            }
+        } else {
+            payload.output = result.output;
+        }
+    }
     if (result.error) payload.error = result.error;
     context.history.push({
         role: "tool",

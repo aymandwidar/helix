@@ -179,9 +179,9 @@ async function runMemoryCheck(intent: string): Promise<string> {
         const { runPreGenerateCheck } = await import("../mcp/pre_generate");
         const result = await runPreGenerateCheck(intent);
         if (result.findings.length === 0) return "";
-        console.log(chalk.cyan(`🧠 Cognitive memory: ${result.findings.length} relevant finding(s)`));
-        for (const f of result.findings) console.log(chalk.gray(`   • ${f.server}.${f.tool}`));
-        console.log("");
+        const { renderCmmBanner } = await import("../chat/display/cmm_banner");
+        const banner = renderCmmBanner(result);
+        if (banner.nonEmpty) console.log("\n" + banner.text + "\n");
         return result.contextBlock;
     } catch {
         return "";

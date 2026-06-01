@@ -30,6 +30,10 @@ export interface ReplOptions {
     noMcp?: boolean;
     /** Override the saved permission mode for this session. */
     permissionMode?: PermissionMode;
+    /** Sprint 15: hard cap on total spend in USD. */
+    budgetUsd?: number;
+    /** Sprint 15: cap on agent iterations per turn. */
+    maxIterations?: number;
 }
 
 const HELP_TEXT = `${chalk.cyan("Slash commands:")}
@@ -79,6 +83,10 @@ export async function startRepl(options: ReplOptions = {}): Promise<void> {
     const display = options.display || defaultDisplay;
     const stream = options.stream !== false;
     const permissions = PermissionEngine.fromSettings(undefined, options.permissionMode);
+    // Sprint 15: budget + iteration cap (session-scoped).
+    const budget = options.budgetUsd && options.budgetUsd > 0
+        ? new (await import("../cost")).BudgetManager({ totalUsd: options.budgetUsd })
+        : undefined;
 
     // Auto-load chat plugins (helix-tool-* packages)
     try {
@@ -171,6 +179,8 @@ export async function startRepl(options: ReplOptions = {}): Promise<void> {
                 permissions,
                 stream,
                 onStream: stream ? (chunk: string) => process.stdout.write(chunk) : undefined,
+                budget,
+                maxIterations: options.maxIterations,
             });
         } catch (err: any) {
             display.error(err?.message || String(err));

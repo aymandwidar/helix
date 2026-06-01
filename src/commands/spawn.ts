@@ -53,18 +53,16 @@ export async function spawnApp(
     console.log(chalk.green('✅ Constitutional validation complete\n'));
   }
 
-  // Cognitive memory pre-generate check (Sprint 8). Fails open if no memory
-  // server is configured — never blocks generation.
+  // Cognitive memory pre-generate check (Sprint 8) + Sprint 15 banner.
+  // Fails open if no memory server is configured.
   try {
     const { runPreGenerateCheck } = await import('../mcp/pre_generate.js');
     const memoryCheck = await runPreGenerateCheck(prompt);
     if (memoryCheck.findings.length > 0) {
-      console.log(chalk.cyan(`🧠 Cognitive memory: ${memoryCheck.findings.length} relevant finding(s) from prior projects`));
-      for (const f of memoryCheck.findings) {
-        console.log(chalk.gray(`   • ${f.server}.${f.tool}`));
-      }
+      const { renderCmmBanner } = await import('../chat/display/cmm_banner.js');
+      const banner = renderCmmBanner(memoryCheck);
+      if (banner.nonEmpty) console.log('\n' + banner.text + '\n');
       prompt = `${memoryCheck.contextBlock}\n\n## Current request\n${prompt}`;
-      console.log('');
     }
   } catch {
     // Memory check is best-effort; ignore failures.

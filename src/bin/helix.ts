@@ -73,7 +73,7 @@ import { evolveCodebase } from "../commands/evolve";
 const banner = `
 ${chalk.cyan("╦ ╦╔═╗╦  ╦═╗ ╦")}
 ${chalk.cyan("╠═╣║╣ ║  ║╔╩╦╝")}
-${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v17.1.0")}
+${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v17.2.0")}
 ${chalk.gray("AI-Native Development Platform")}
 ${chalk.gray("Generate • Chat • Preview • Deploy • Evolve")}
 `;
@@ -83,7 +83,7 @@ const program = new Command();
 program
     .name("helix")
     .description("Helix - AI-Native Development Platform")
-    .version("17.1.0")
+    .version("17.2.0")
     .addHelpText("before", banner);
 
 // ============================================================================
@@ -991,7 +991,9 @@ program
     .option("--trust", "Run in 'trusted' mode (only sensitive tools prompt)")
     .option("--yolo", "Run in 'yolo' mode (auto-approve everything — be careful)")
     .option("--manual", "Run in 'manual' mode (prompt for every tool call)")
-    .action(async (options: { model?: string; includeDirectories?: string; trust?: boolean; yolo?: boolean; manual?: boolean }) => {
+    .option("--budget <usd>", "Hard cap on total spend in USD; agent stops when reached", v => parseFloat(v))
+    .option("--max-iterations <n>", "Max agent loop iterations per turn", v => parseInt(v, 10))
+    .action(async (options: { model?: string; includeDirectories?: string; trust?: boolean; yolo?: boolean; manual?: boolean; budget?: number; maxIterations?: number }) => {
         console.log(banner);
         if (!process.env.OPENROUTER_API_KEY) {
             console.error(chalk.red("❌ OPENROUTER_API_KEY not found in environment"));
@@ -1010,6 +1012,8 @@ program
             extraDirs,
             permissionMode: mode,
             autoApprove: !!options.yolo,
+            budgetUsd: options.budget,
+            maxIterations: options.maxIterations,
         });
     });
 
