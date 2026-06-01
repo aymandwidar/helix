@@ -64,6 +64,7 @@ const HELP_TEXT = `${chalk.cyan("Slash commands:")}
   ${chalk.bold("/pr")}          /pr create | /pr review — AI PR title/body or review
   ${chalk.bold("/changelog")}   Generate a changelog section (--write to update CHANGELOG.md)
   ${chalk.bold("/verify-visual")}   Capture/diff a screenshot of the running app (optional deps)
+  ${chalk.bold("/parallel")}    /parallel task1 | task2 | task3 — run agents in parallel worktrees
 
 ${chalk.cyan("Inline routing:")}
   ${chalk.bold("@<server> <command>")}   Route directly to an MCP server (e.g. @memory search "prisma")
@@ -549,6 +550,32 @@ async function handleSlashCommand(line: string, ctx: SlashCtx): Promise<boolean>
                     (result.message ? `note: ${result.message}\n` : "") +
                     (result.mismatchedPixels !== undefined ? `mismatched: ${result.mismatchedPixels}/${result.totalPixels}\n` : "") +
                     (result.diffPath ? `diff: ${result.diffPath}\n` : ""));
+            } catch (e: any) { ctx.display.error(e?.message || String(e)); }
+            return false;
+        }
+        case "parallel": {
+            // /parallel task1 | task2 | task3
+            const joined = rest.join(" ");
+            const prompts = joined.split("|").map(s => s.trim()).filter(Boolean);
+            if (prompts.length < 2) {
+                ctx.display.warn("Usage: /parallel <task1> | <task2> | <task3>  (use '|' to separate)");
+                return false;
+            }
+            try {
+                const { runParallel, formatConflictReport } = await import("../parallel");
+                ctx.display.info(`Running ${prompts.length} workers in parallel worktrees...`);
+                const result = await runParallel({
+                    tasks: prompts.map(p => ({ prompt: p })),
+                    cwd: ctx.context.cwd,
+                });
+                for (const w of result.workers) {
+                    const icon = w.success ? chalk.green("✓") : chalk.red("✗");
+                    ctx.display.raw(`  ${icon} ${w.task.label || w.task.prompt.slice(0, 40)} — ${w.changedFiles.length} files${w.error ? ` (error: ${w.error})` : ""}\n`);
+                }
+                ctx.display.raw("\n" + formatConflictReport(result.conflicts) + "\n");
+                if (result.merge) {
+                    ctx.display.info(`merge: ${result.merge.merged.length} merged, ${result.merge.skipped.length} skipped`);
+                }
             } catch (e: any) { ctx.display.error(e?.message || String(e)); }
             return false;
         }

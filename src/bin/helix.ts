@@ -63,7 +63,7 @@ import { evolveCodebase } from "../commands/evolve";
 const banner = `
 ${chalk.cyan("╦ ╦╔═╗╦  ╦═╗ ╦")}
 ${chalk.cyan("╠═╣║╣ ║  ║╔╩╦╝")}
-${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v16.0.0")}
+${chalk.cyan("╩ ╩╚═╝╩═╝╩╩ ╚═")} ${chalk.magenta("v17.0.0")}
 ${chalk.gray("AI-Native Development Platform")}
 ${chalk.gray("Generate • Chat • Preview • Deploy • Evolve")}
 `;
@@ -73,7 +73,7 @@ const program = new Command();
 program
     .name("helix")
     .description("Helix - AI-Native Development Platform")
-    .version("16.0.0")
+    .version("17.0.0")
     .addHelpText("before", banner);
 
 // ============================================================================
@@ -94,8 +94,28 @@ program
     .option("--constitution <file>", "Path to constitution.md file")
     .option("--ai <provider>", "AI provider (for Flutter): 'openrouter'")
     .option("--dry-run", "Show what would be generated without creating files")
+    .option("--parallel <prompts...>", "Run N spawns in parallel worktrees instead — pass extra prompts here")
+    .option("--budget <n>", "Total token budget across parallel workers", v => parseInt(v, 10))
     .action(async (prompt: string, options: any) => {
         console.log(banner);
+
+        // Sprint 13: --parallel re-routes to the parallel orchestrator.
+        if (Array.isArray(options.parallel) && options.parallel.length > 0) {
+            const { runParallel, formatConflictReport } = await import("../parallel");
+            const prompts = [prompt, ...options.parallel];
+            const result = await runParallel({
+                tasks: prompts.map(p => ({ prompt: p })),
+                cwd: process.cwd(),
+                totalBudget: options.budget ?? null,
+            });
+            for (const w of result.workers) {
+                const icon = w.success ? chalk.green("✓") : chalk.red("✗");
+                console.log(`  ${icon} ${w.task.label || w.task.prompt.slice(0, 40)} — ${w.changedFiles.length} files${w.error ? ` (error: ${w.error})` : ""}`);
+            }
+            console.log("\n" + formatConflictReport(result.conflicts));
+            if (result.workers.some(w => !w.success)) process.exit(1);
+            return;
+        }
 
         // Build spawn options
         const spawnOptions = {
@@ -212,6 +232,79 @@ program
             }
             await spawnApp(prompt, spawnOptions, constitutionContent);
         }
+    });
+
+// ============================================================================
+// V17.0 COMMANDS: Parallel worktree execution
+// ============================================================================
+
+const parallelCmd = program
+    .command("parallel")
+    .description("Run multiple subagent tasks in isolated git worktrees");
+
+parallelCmd
+    .command("spawn <prompts...>")
+    .description("Spawn N agents in parallel — each gets its own worktree")
+    .option("--budget <n>", "Total token budget across all workers (split evenly)", v => parseInt(v, 10))
+    .option("--no-merge", "Skip the auto-merge step (leave worktrees in place)")
+    .option("--no-clean", "Keep worktrees on disk after the run finishes")
+    .action(async (prompts: string[], options: { budget?: number; merge?: boolean; clean?: boolean }) => {
+        console.log(banner);
+        const { runParallel, formatConflictReport } = await import("../parallel");
+        const tasks = prompts.map(p => ({ prompt: p }));
+        const result = await runParallel({
+            tasks,
+            cwd: process.cwd(),
+            totalBudget: options.budget ?? null,
+            autoMerge: options.merge !== false,
+            autoClean: options.clean !== false,
+        });
+        for (const w of result.workers) {
+            const icon = w.success ? chalk.green("✓") : chalk.red("✗");
+            console.log(`  ${icon} ${w.task.label || w.task.prompt.slice(0, 40)} — ${w.changedFiles.length} files${w.error ? ` (error: ${w.error})` : ""}`);
+        }
+        console.log("\n" + formatConflictReport(result.conflicts));
+        if (result.merge) {
+            console.log(`merge: ${result.merge.merged.length} merged, ${result.merge.skipped.length} skipped`);
+        }
+        if (result.workers.some(w => !w.success)) process.exit(1);
+    });
+
+parallelCmd
+    .command("evolve <prompts...>")
+    .description("Run N evolve tasks in parallel worktrees")
+    .option("--budget <n>", "Total token budget across all workers", v => parseInt(v, 10))
+    .option("--no-merge", "Skip auto-merge")
+    .option("--no-clean", "Keep worktrees on disk")
+    .action(async (prompts: string[], options: { budget?: number; merge?: boolean; clean?: boolean }) => {
+        console.log(banner);
+        const { runParallel, formatConflictReport } = await import("../parallel");
+        const tasks = prompts.map(p => ({ prompt: `Evolve the project to: ${p}` }));
+        const result = await runParallel({
+            tasks,
+            cwd: process.cwd(),
+            totalBudget: options.budget ?? null,
+            autoMerge: options.merge !== false,
+            autoClean: options.clean !== false,
+        });
+        for (const w of result.workers) {
+            const icon = w.success ? chalk.green("✓") : chalk.red("✗");
+            console.log(`  ${icon} ${w.task.label || w.task.prompt.slice(0, 40)} — ${w.changedFiles.length} files${w.error ? ` (error: ${w.error})` : ""}`);
+        }
+        console.log("\n" + formatConflictReport(result.conflicts));
+        if (result.merge) {
+            console.log(`merge: ${result.merge.merged.length} merged, ${result.merge.skipped.length} skipped`);
+        }
+        if (result.workers.some(w => !w.success)) process.exit(1);
+    });
+
+parallelCmd
+    .command("status")
+    .description("Show progress of the most recent parallel run")
+    .action(async () => {
+        const { readStatus, formatStatus } = await import("../parallel");
+        const status = readStatus(process.cwd());
+        console.log(formatStatus(status));
     });
 
 // ============================================================================
@@ -1295,13 +1388,34 @@ program
     .option("--skip-validation", "Skip the build+test validation pass")
     .option("--max-heal <n>", "Max self-heal attempts after a failed validation", "1")
     .option("-m, --model <model>", "AI model to use for planning")
+    .option("--parallel <prompts...>", "Run additional evolve tasks in parallel worktrees")
+    .option("--budget <n>", "Total token budget across parallel workers", v => parseInt(v, 10))
     .action(async (
         action: string | undefined,
         intent: string[] | undefined,
-        options: { path: string; yes?: boolean; dryRun?: boolean; skipValidation?: boolean; maxHeal?: string; model?: string }
+        options: { path: string; yes?: boolean; dryRun?: boolean; skipValidation?: boolean; maxHeal?: string; model?: string; parallel?: string[]; budget?: number }
     ) => {
         console.log(banner);
         const a = (action || "scan").toLowerCase();
+
+        // Sprint 13: --parallel re-routes evolve tasks through the parallel orchestrator.
+        if (Array.isArray(options.parallel) && options.parallel.length > 0) {
+            const intentStr = (intent || []).join(" ").trim();
+            const prompts = [intentStr || a, ...options.parallel].filter(Boolean);
+            const { runParallel, formatConflictReport } = await import("../parallel");
+            const result = await runParallel({
+                tasks: prompts.map(p => ({ prompt: `Evolve the project (${a}): ${p}` })),
+                cwd: options.path,
+                totalBudget: options.budget ?? null,
+            });
+            for (const w of result.workers) {
+                const icon = w.success ? chalk.green("✓") : chalk.red("✗");
+                console.log(`  ${icon} ${w.task.label || w.task.prompt.slice(0, 40)} — ${w.changedFiles.length} files${w.error ? ` (error: ${w.error})` : ""}`);
+            }
+            console.log("\n" + formatConflictReport(result.conflicts));
+            if (result.workers.some(w => !w.success)) process.exit(1);
+            return;
+        }
 
         // Sprint 9: modify existing app
         if (SPRINT9_EVOLVE_ACTIONS.has(a)) {
