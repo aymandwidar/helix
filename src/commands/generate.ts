@@ -15,6 +15,7 @@ import {
   generateUIPage,
   HelixAST,
 } from "../parser";
+import { userFields, dedupeInlineFieldList } from "../utils/strand-fields";
 
 export async function generateStack(blueprintPath: string): Promise<void> {
   const fullPath = path.isAbsolute(blueprintPath)
@@ -180,8 +181,6 @@ export default function Home() {
   return (<main className="min-h-screen p-8 flex items-center justify-center"><div className="text-center"><h1 className="text-4xl font-bold text-white mb-4">🧬 Helix App</h1><p className="text-gray-400">No strands defined</p></div></main>);
 }`;
   }
-
-  const { userFields, dedupeInlineFieldList } = require('../utils/strand-fields');
 
   // Generate interfaces for ALL strands
   const interfaces = ast.strands.map(s => {

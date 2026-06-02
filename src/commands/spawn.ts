@@ -29,8 +29,15 @@ export async function spawnApp(
   constitution?: string,
   connectionString?: string,
 ): Promise<void> {
+  // The original user prompt is preserved verbatim for display surfaces
+  // (page titles, project name, manifest). AI-side enrichments — constitution
+  // text, CMM context, requirements analysis — live on enrichedPrompt and are
+  // only visible to the model.
+  const userPrompt = prompt;
+  let enrichedPrompt = prompt;
+
   console.log(chalk.cyan('\n🧬 HELIX SPAWN v11.1 - Clean Factory\n'));
-  console.log(chalk.gray(`Prompt: "${prompt}"\n`));
+  console.log(chalk.gray(`Prompt: "${userPrompt}"\n`));
   if (connectionString) {
     console.log(chalk.gray('Supabase Autopilot: ENABLED\n'));
   }
@@ -38,7 +45,7 @@ export async function spawnApp(
   // Constitutional validation
   if (!options.noConstitution) {
     console.log(chalk.cyan('📜 Validating Constitutional Compliance...\n'));
-    const report = validateConstitution(prompt, options);
+    const report = validateConstitution(userPrompt, options);
     printConstitutionalReport(report);
 
     if (report.violations.length > 0) {
@@ -49,7 +56,9 @@ export async function spawnApp(
       }
     }
 
-    prompt = enhancePromptWithConstitution(prompt);
+    // Constitution guidance is for the AI only — never bake it into the
+    // user-facing prompt or any rendered string.
+    enrichedPrompt = enhancePromptWithConstitution(userPrompt);
     console.log(chalk.green('✅ Constitutional validation complete\n'));
   }
 
@@ -57,19 +66,19 @@ export async function spawnApp(
   // Fails open if no memory server is configured.
   try {
     const { runPreGenerateCheck } = await import('../mcp/pre_generate.js');
-    const memoryCheck = await runPreGenerateCheck(prompt);
+    const memoryCheck = await runPreGenerateCheck(userPrompt);
     if (memoryCheck.findings.length > 0) {
       const { renderCmmBanner } = await import('../chat/display/cmm_banner.js');
       const banner = renderCmmBanner(memoryCheck);
       if (banner.nonEmpty) console.log('\n' + banner.text + '\n');
-      prompt = `${memoryCheck.contextBlock}\n\n## Current request\n${prompt}`;
+      enrichedPrompt = `${memoryCheck.contextBlock}\n\n## Current request\n${enrichedPrompt}`;
     }
   } catch {
     // Memory check is best-effort; ignore failures.
   }
 
   // Project naming and isolation
-  const projectName = generateProjectName(prompt);
+  const projectName = generateProjectName(userPrompt);
   await fs.ensureDir(BUILDS_DIR);
   const projectPath = path.join(BUILDS_DIR, projectName);
 
@@ -88,10 +97,12 @@ export async function spawnApp(
     : options.db === 'supabase' ? 'supabase'
     : 'sqlite';
 
-  // Build pipeline context
+  // Build pipeline context. ctx.prompt is the verbatim user input — it ends
+  // up in page titles, project metadata, and the manifest. ctx.enrichedPrompt
+  // carries any AI-only guidance (constitution, CMM context, requirements).
   const ctx: PipelineContext = {
-    prompt,
-    enrichedPrompt: prompt,
+    prompt: userPrompt,
+    enrichedPrompt,
     projectName,
     projectPath,
     options,

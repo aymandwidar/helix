@@ -13,6 +13,7 @@ export type {
 } from './parser/index.js';
 
 import type { HelixAST, HelixStrand, HelixField, HelixView } from './parser/index.js';
+import { userFields, dedupeInterfaceLines, dedupeInlineFieldList } from './utils/strand-fields.js';
 
 /**
  * Convert PascalCase model name to camelCase for Prisma client accessor.
@@ -461,7 +462,6 @@ export function generateUIPage(view: HelixView, strand: HelixStrand, allStrands?
     // always emitted by the boilerplate above/below the user fields. Without
     // this filter, blueprints that include those names produce duplicate
     // identifier errors at type-check time.
-    const { userFields, dedupeInterfaceLines, dedupeInlineFieldList } = require('./utils/strand-fields');
     const renderedFields = userFields(strand)
         .map((f: { name: string; type: string }) => `  ${f.name}: ${tsType(f.type)};`)
         .join('\n');

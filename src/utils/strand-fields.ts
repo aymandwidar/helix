@@ -25,7 +25,6 @@
 
 export interface FieldLike {
     name: string;
-    [k: string]: unknown;
 }
 
 /** Field names always emitted by Helix's TS interface / Prisma boilerplate. */
@@ -38,6 +37,9 @@ export const AUTO_MANAGED_FIELDS = new Set<string>([
 /**
  * Return user-defined fields with auto-managed names filtered out, and any
  * accidental duplicates from the blueprint collapsed (first wins).
+ *
+ * Generic over `T` so callers get back their own field type (e.g. HelixField)
+ * without needing an index signature on it.
  */
 export function userFields<T extends FieldLike>(strand: { fields?: T[] } | undefined): T[] {
     if (!strand?.fields || strand.fields.length === 0) return [];

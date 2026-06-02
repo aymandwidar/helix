@@ -2,17 +2,42 @@
  * Home Page Generator — Smart view detection (gallery, kanban, feed, grid)
  */
 
+import * as path from 'path';
+import * as fs from 'fs';
 import type { HelixAST } from '../parser/index.js';
 import { getThemeClasses } from '../themes/index.js';
+import { userFields, dedupeInlineFieldList } from '../utils/strand-fields';
+
+/**
+ * Read the running Helix CLI's version once. Used for the "🧬 Helix vX.Y"
+ * tag rendered in spawned apps. Falls back to a placeholder if the
+ * package.json can't be read for any reason — never crash codegen for a
+ * cosmetic version stamp.
+ */
+function readHelixVersion(): string {
+  try {
+    const pkgPath = path.resolve(__dirname, '..', '..', 'package.json');
+    const raw = fs.readFileSync(pkgPath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.version === 'string' && parsed.version) {
+      // Trim to MAJOR.MINOR for the display tag (matches the prior style).
+      const m = parsed.version.match(/^(\d+\.\d+)/);
+      return m ? m[1] : parsed.version;
+    }
+  } catch {
+    // ignore — fall through
+  }
+  return '17.2';
+}
+
+const HELIX_VERSION_TAG = readHelixVersion();
 
 export function generateSpawnHomePage(prompt: string, ast: HelixAST, themeClasses?: ReturnType<typeof getThemeClasses>): string {
   const tc = themeClasses || getThemeClasses();
   const appTitle = prompt.split(' ').slice(0, 5).join(' ');
   if (ast.strands.length === 0) {
-    return `// Spawned by Helix v11.1 - Clean Factory\nexport default function Home() { return (<main className="min-h-screen p-8 flex items-center justify-center"><div className="text-center"><h1 className="text-4xl font-bold ${tc.heading} mb-4">🧬 ${appTitle}</h1><p className="${tc.textMuted}">No strands</p></div></main>); }`;
+    return `// Spawned by Helix v${HELIX_VERSION_TAG}\nexport default function Home() { return (<main className="min-h-screen p-8 flex items-center justify-center"><div className="text-center"><h1 className="text-4xl font-bold ${tc.heading} mb-4">🧬 ${appTitle}</h1><p className="${tc.textMuted}">No strands</p></div></main>); }`;
   }
-
-  const { userFields, dedupeInlineFieldList } = require('../utils/strand-fields');
 
   const interfaces = ast.strands.map(s => {
     const f = userFields(s).map((ff: { name: string; type: string }) => `${ff.name}: ${ff.type === 'String' ? 'string' : ff.type === 'Int' || ff.type === 'Float' ? 'number' : 'string'}`).join('; ');
@@ -135,7 +160,7 @@ export function generateSpawnHomePage(prompt: string, ast: HelixAST, themeClasse
         </section>`;
   }).join('\n');
 
-  return `// Spawned by Helix v11.1 — With error handling, loading states, pagination support
+  return `// Spawned by Helix v${HELIX_VERSION_TAG} — With error handling, loading states, pagination support
 'use client';
 import { useState, useEffect } from 'react';
 ${interfaces}
@@ -180,7 +205,7 @@ export default function Home() {
       )}
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
-          <span className="text-sm text-indigo-400 font-mono">🧬 Helix v11.1</span>
+          <span className="text-sm text-indigo-400 font-mono">🧬 Helix v${HELIX_VERSION_TAG}</span>
           <h1 className="text-4xl font-bold ${tc.heading} mt-1">${appTitle}</h1>
           <p className="${tc.textMuted}">${ast.strands.length} data types</p>
         </div>
