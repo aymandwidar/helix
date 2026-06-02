@@ -76,6 +76,8 @@ RULES:
 - Create views that make sense for the user's request
 - Keep it simple but complete
 - Output ONLY valid Helix code, no markdown fences or explanations
+- CRITICAL: Do NOT declare "id", "createdAt", or "updatedAt" fields — Helix adds those automatically. Including them produces duplicate-identifier TypeScript errors.
+- CRITICAL: Each field name within a strand must be unique. Never repeat a field name within the same strand.
 ${constitution ? '- IMPORTANT: Follow ALL guidelines from the CONSTITUTION section above' : ''}
 
 Example output:

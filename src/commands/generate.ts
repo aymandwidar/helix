@@ -181,16 +181,19 @@ export default function Home() {
 }`;
   }
 
+  const { userFields, dedupeInlineFieldList } = require('../utils/strand-fields');
+
   // Generate interfaces for ALL strands
   const interfaces = ast.strands.map(s => {
-    const fields = s.fields.map(f => `${f.name}: ${f.type === 'String' ? 'string' : f.type === 'Int' || f.type === 'Float' ? 'number' : f.type === 'Boolean' ? 'boolean' : 'string'}`).join('; ');
-    return `interface ${s.name} { id: string; ${fields}; createdAt: string; }`;
+    const fields = userFields(s).map((f: { name: string; type: string }) => `${f.name}: ${f.type === 'String' ? 'string' : f.type === 'Int' || f.type === 'Float' ? 'number' : f.type === 'Boolean' ? 'boolean' : 'string'}`).join('; ');
+    const inline = `{ id: string;${fields ? ' ' + fields + ';' : ''} createdAt: string; }`;
+    return `interface ${s.name} ${dedupeInlineFieldList(inline)}`;
   }).join('\n');
 
   // Generate state for ALL strands
   const states = ast.strands.map(s => {
     const lower = s.name.toLowerCase();
-    const init = s.fields.map(f => `${f.name}: ${f.type === 'Boolean' ? 'false' : f.type === 'Int' || f.type === 'Float' ? '0' : "''"}`).join(', ');
+    const init = userFields(s).map((f: { name: string; type: string }) => `${f.name}: ${f.type === 'Boolean' ? 'false' : f.type === 'Int' || f.type === 'Float' ? '0' : "''"}`).join(', ');
     return `const [${lower}s, set${s.name}s] = useState<${s.name}[]>([]);
   const [show${s.name}Form, setShow${s.name}Form] = useState(false);
   const [${lower}Form, set${s.name}Form] = useState({ ${init} });`;

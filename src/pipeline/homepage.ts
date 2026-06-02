@@ -12,14 +12,17 @@ export function generateSpawnHomePage(prompt: string, ast: HelixAST, themeClasse
     return `// Spawned by Helix v11.1 - Clean Factory\nexport default function Home() { return (<main className="min-h-screen p-8 flex items-center justify-center"><div className="text-center"><h1 className="text-4xl font-bold ${tc.heading} mb-4">🧬 ${appTitle}</h1><p className="${tc.textMuted}">No strands</p></div></main>); }`;
   }
 
+  const { userFields, dedupeInlineFieldList } = require('../utils/strand-fields');
+
   const interfaces = ast.strands.map(s => {
-    const f = s.fields.map(f => `${f.name}: ${f.type === 'String' ? 'string' : f.type === 'Int' || f.type === 'Float' ? 'number' : 'string'}`).join('; ');
-    return `interface ${s.name} { id: string; ${f}; createdAt: string; }`;
+    const f = userFields(s).map((ff: { name: string; type: string }) => `${ff.name}: ${ff.type === 'String' ? 'string' : ff.type === 'Int' || ff.type === 'Float' ? 'number' : 'string'}`).join('; ');
+    const inline = `{ id: string;${f ? ' ' + f + ';' : ''} createdAt: string; }`;
+    return `interface ${s.name} ${dedupeInlineFieldList(inline)}`;
   }).join('\n');
 
   const states = ast.strands.map(s => {
     const l = s.name.toLowerCase();
-    const init = s.fields.map(f => `${f.name}: ${f.type === 'Int' || f.type === 'Float' ? '0' : "''"}`).join(', ');
+    const init = userFields(s).map((ff: { name: string; type: string }) => `${ff.name}: ${ff.type === 'Int' || ff.type === 'Float' ? '0' : "''"}`).join(', ');
     return `const [${l}s, set${s.name}s] = useState<${s.name}[]>([]);
   const [show${s.name}Form, setShow${s.name}Form] = useState(false);
   const [${l}Form, set${s.name}Form] = useState({ ${init} });`;
@@ -27,7 +30,7 @@ export function generateSpawnHomePage(prompt: string, ast: HelixAST, themeClasse
 
   const funcs = ast.strands.map(s => {
     const l = s.name.toLowerCase();
-    const resetForm = s.fields.map(ff => `${ff.name}: ${ff.type === 'Int' || ff.type === 'Float' ? '0' : "''"}`).join(', ');
+    const resetForm = userFields(s).map((ff: { name: string; type: string }) => `${ff.name}: ${ff.type === 'Int' || ff.type === 'Float' ? '0' : "''"}`).join(', ');
     return `const fetch${s.name}s = async () => { try { const r = await fetch('/api/${l}'); const j = await r.json(); set${s.name}s(j.data || j); } catch { setError('Failed to load ${l}s'); } };
   const submit${s.name} = async (e: React.FormEvent) => { e.preventDefault(); try { const r = await fetch('/api/${l}', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(${l}Form) }); if (!r.ok) { const err = await r.json(); setError(err.details?.join(', ') || err.error || 'Failed'); return; } setShow${s.name}Form(false); set${s.name}Form({ ${resetForm} }); fetch${s.name}s(); } catch { setError('Failed to create ${l}'); } };
   const del${s.name} = async (id: string) => { if (!confirm('Delete?')) return; try { await fetch('/api/${l}?id=' + id, { method: 'DELETE' }); fetch${s.name}s(); } catch { setError('Failed to delete ${l}'); } };`;
@@ -48,7 +51,7 @@ export function generateSpawnHomePage(prompt: string, ast: HelixAST, themeClasse
   const sections = ast.strands.map(s => {
     const l = s.name.toLowerCase();
     const viewType = detectViewType(s.fields);
-    const inputs = s.fields.map(f => {
+    const inputs = userFields(s).map((f: { name: string; type: string }) => {
       const t = f.type === 'Int' || f.type === 'Float' ? 'number' : 'text';
       return `<div className="mb-3"><label className="block ${tc.textMuted} text-sm mb-1">${f.name}</label><input type="${t}" value={${l}Form.${f.name} || ''} onChange={e => set${s.name}Form({...${l}Form, ${f.name}: ${t === 'number' ? 'Number(e.target.value)' : 'e.target.value'}})} className="w-full rounded-md p-3 transition-colors" /></div>`;
     }).join('\n            ');

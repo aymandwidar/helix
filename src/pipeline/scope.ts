@@ -59,7 +59,12 @@ Rules:
 - Choose appropriate field types
 - Detect the best view type for each model
 - Suggest a theme that matches the domain
-- Output ONLY JSON, no markdown fences or explanations`;
+- Output ONLY JSON, no markdown fences or explanations
+
+CRITICAL field rules — read carefully:
+- DO NOT include "id", "createdAt", or "updatedAt" in the fields list. Helix adds those automatically. If you put them in fields, the generated TypeScript will have duplicate identifiers and fail to build.
+- Each field name in a model must appear AT MOST ONCE. Never repeat a field name within the same model.
+- Field names are camelCase (e.g. "dueDate" not "due_date" or "DueDate").`;
 
   return await createCompletion(
     systemPrompt,
