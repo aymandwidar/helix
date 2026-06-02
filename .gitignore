@@ -26,3 +26,4 @@ preview/.next/
 # Prisma
 *.db
 *.db-journal
+builds/

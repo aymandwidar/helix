@@ -99,7 +99,10 @@ export function predictCallCost(options: PredictOptions): number {
 }
 
 export function formatBudgetTag(snapshot: BudgetSnapshot): string {
-    return `[$${snapshot.spentUsd.toFixed(2)} / $${snapshot.totalUsd.toFixed(2)}]`;
+    // Use 4-decimal precision for sub-dollar budgets so tiny totals don't
+    // render as "$0.00 / $0.00".
+    const decimals = snapshot.totalUsd < 1 ? 4 : 2;
+    return `[$${snapshot.spentUsd.toFixed(decimals)} / $${snapshot.totalUsd.toFixed(decimals)}]`;
 }
 
 export type { BudgetSnapshot, BudgetCheck } from "./types";

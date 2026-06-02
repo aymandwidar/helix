@@ -17,10 +17,9 @@ import {
     appendOutput,
     writeResult,
     generateBgId,
-    listTasks,
     countByState,
 } from "./store";
-import { onIpc, sendIpc, formatIpcLine } from "./ipc";
+import { onIpc, formatIpcLine } from "./ipc";
 import { BgIpcMessage, BgMeta, BgResult, MAX_BG_TASKS } from "./types";
 
 export const BG_WORKER_ENV = "HELIX_BG_WORKER";
@@ -48,8 +47,8 @@ export interface ForkResult {
 }
 
 export function getDefaultEntryScript(): string {
-    // dist/bin/helix.js — same binary that's already on PATH.
-    return path.resolve(__dirname, "..", "bin", "helix.js");
+    // dedicated worker entry point — does NOT load commander / CLI banner.
+    return path.resolve(__dirname, "..", "bin", "helix-worker.js");
 }
 
 export function forkBackgroundTask(options: ForkOptions): ForkResult {
@@ -102,35 +101,17 @@ export function forkBackgroundTask(options: ForkOptions): ForkResult {
     meta.pid = child.pid ?? null;
     writeMeta(meta);
 
+    // The child writes its own state to disk (output.log, result.json,
+    // meta.json). The parent only listens for IPC messages while it's still
+    // alive — but since the parent exits early to give the user their shell
+    // back, the IPC handler is best-effort progress logging only. Final state
+    // is always authoritative from the child's own writes.
     onIpc(child, (msg: BgIpcMessage) => {
-        appendOutput(id, formatIpcLine(msg));
-        if (msg.type === "done") {
-            updateMeta(id, { state: msg.result.error ? "failed" : "completed", finishedAt: new Date().toISOString() });
-            writeResult(id, msg.result);
-            try { require("./notify").notify("Helix: Task complete", `${id}: ${msg.result.iterations} iter, ${msg.result.toolCalls} tool calls${msg.result.error ? " (failed)" : ""}`); } catch { /* ignore */ }
-        } else if (msg.type === "error") {
-            updateMeta(id, { state: "failed", finishedAt: new Date().toISOString() });
-            writeResult(id, { finalText: "", iterations: 0, toolCalls: 0, error: msg.error });
-        }
-    });
-
-    child.on("exit", (code) => {
-        // Mark completed only if no done message arrived (e.g. crash).
-        const current = listTasks().find(t => t.id === id);
-        if (current && current.state === "running") {
-            updateMeta(id, {
-                state: code === 0 ? "completed" : "failed",
-                finishedAt: new Date().toISOString(),
-            });
-        }
+        try { appendOutput(id, formatIpcLine(msg)); } catch { /* ignore */ }
     });
 
     // Detach so the parent can exit without killing the child.
     if (typeof child.unref === "function") child.unref();
-    if (typeof (child as any).disconnect === "function" && child.connected) {
-        // Keep the IPC channel alive; do NOT disconnect here — we still need
-        // progress messages until the worker finishes.
-    }
 
     return { meta, rejected: null };
 }
@@ -149,15 +130,18 @@ export async function runWorker(runner?: (prompt: string, cwd: string, mode: "tr
     const cwd = process.env.HELIX_BG_CWD || process.cwd();
     const mode = (process.env.HELIX_BG_MODE === "yolo" ? "yolo" : "trusted") as "trusted" | "yolo";
 
-    sendIpc(process, { type: "progress", turn: 0, lastTool: "starting" });
+    // The worker writes directly to its own state files. We don't rely on the
+    // parent's IPC channel because the parent intentionally exits early so the
+    // user gets their shell back — once the parent is gone, IPC messages from
+    // the child go nowhere. Write to disk so `helix bg status/logs` work
+    // regardless of whether the parent is still alive.
+    appendOutput(id, formatIpcLine({ type: "progress", turn: 0, lastTool: "starting" }));
 
     let result: BgResult;
     try {
         if (runner) {
             result = await runner(prompt, cwd, mode);
         } else {
-            // Lazy-import the chat module so tests that supply a custom runner
-            // don't pay for it.
             const { ChatContext } = await import("../chat/context");
             const { CheckpointManager } = await import("../chat/checkpoints");
             const { buildDefaultRegistry } = await import("../chat/tools");
@@ -168,13 +152,26 @@ export async function runWorker(runner?: (prompt: string, cwd: string, mode: "tr
             const checkpoints = new CheckpointManager({ cwd });
             const permissions = new PermissionEngine({ overrideMode: mode });
 
-            const noopDisplay: any = { info: () => {}, warn: () => {}, error: () => {}, assistant: () => {}, user: () => {}, toolCall: (n: string) => sendIpc(process, { type: "progress", turn: 0, lastTool: n }), toolResult: () => {}, diff: () => {}, spinner: () => ({ stop: () => {}, succeed: () => {}, fail: () => {}, update: () => {} }), confirm: async () => true, raw: () => {} };
+            // Display routes tool-call notifications to the output log so
+            // `helix bg attach <id>` can stream progress in real time.
+            let turn = 0;
+            const fileDisplay: any = {
+                info: () => {}, warn: () => {}, error: () => {},
+                assistant: (t: string) => { turn++; appendOutput(id, formatIpcLine({ type: "progress", turn, lastTool: "(assistant turn)" })); void t; },
+                user: () => {},
+                toolCall: (n: string) => { appendOutput(id, formatIpcLine({ type: "progress", turn, lastTool: n })); },
+                toolResult: () => {},
+                diff: () => {},
+                spinner: () => ({ stop: () => {}, succeed: () => {}, fail: () => {}, update: () => {} }),
+                confirm: async () => true,
+                raw: () => {},
+            };
 
             const agent = await runAgentTurn(prompt, {
                 registry,
                 context: ctx,
                 checkpoints,
-                display: noopDisplay,
+                display: fileDisplay,
                 permissions,
                 model: process.env.HELIX_BG_MODEL,
             });
@@ -184,7 +181,16 @@ export async function runWorker(runner?: (prompt: string, cwd: string, mode: "tr
         result = { finalText: "", iterations: 0, toolCalls: 0, error: err?.message || String(err) };
     }
 
-    sendIpc(process, { type: "done", result });
-    // Give the parent a moment to drain the message before we exit.
-    await new Promise<void>(resolve => setTimeout(resolve, 50));
+    // Persist final state — don't rely on the parent receiving an IPC message.
+    appendOutput(id, formatIpcLine({ type: "done", result }));
+    writeResult(id, result);
+    updateMeta(id, {
+        state: result.error ? "failed" : "completed",
+        finishedAt: new Date().toISOString(),
+    });
+    // Best-effort desktop notification.
+    try {
+        const { notify } = require("./notify");
+        notify("Helix: Task complete", `${id}: ${result.iterations} iter, ${result.toolCalls} tool calls${result.error ? " (failed)" : ""}`);
+    } catch { /* ignore */ }
 }

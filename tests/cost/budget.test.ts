@@ -56,9 +56,15 @@ describe("BudgetManager", () => {
         expect(unknown).toBe(0);
     });
 
-    it("formatBudgetTag renders [$spent / $total]", () => {
-        const b = new BudgetManager({ totalUsd: 0.5 });
-        b.record(0.12);
-        expect(formatBudgetTag(b.snapshot())).toBe("[$0.12 / $0.50]");
+    it("formatBudgetTag renders [$spent / $total] with 2 decimals for budgets ≥ $1", () => {
+        const b = new BudgetManager({ totalUsd: 5 });
+        b.record(1.23);
+        expect(formatBudgetTag(b.snapshot())).toBe("[$1.23 / $5.00]");
+    });
+
+    it("formatBudgetTag uses 4 decimals for sub-dollar budgets", () => {
+        const b = new BudgetManager({ totalUsd: 0.001 });
+        const tag = formatBudgetTag(b.snapshot());
+        expect(tag).toBe("[$0.0000 / $0.0010]");
     });
 });

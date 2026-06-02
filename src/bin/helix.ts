@@ -24,18 +24,20 @@ import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
 
-// Load environment variables
+// Load environment variables — look in cwd first, then in the helix install dir
+// so users can set OPENROUTER_API_KEY once next to their global helix install
+// and have it work from any directory.
 dotenv.config();
-
-// Sprint 14: re-entry as a background worker. Done before commander parses
-// argv so the worker process never executes the CLI banner.
-if (process.env.HELIX_BG_WORKER === "1") {
-    void (async () => {
-        const { runWorker } = await import("../bg/daemon");
-        await runWorker();
-        process.exit(0);
-    })();
+if (!process.env.OPENROUTER_API_KEY) {
+    const installDirEnv = path.resolve(__dirname, "..", "..", ".env");
+    if (fs.existsSync(installDirEnv)) {
+        dotenv.config({ path: installDirEnv });
+    }
 }
+
+// Sprint 14: background workers run via the dedicated dist/bin/helix-worker.js
+// script (forked from src/bg/daemon.ts → forkBackgroundTask). This file is the
+// interactive CLI entry point only.
 
 // Import core modules
 import { conductResearch } from "../researcher";
@@ -165,7 +167,7 @@ program
         let constitutionContent: string | undefined;
         let constitutionSource: string | null = null;
 
-        if (options.constitution) {
+        if (typeof options.constitution === "string" && options.constitution.length > 0) {
             // Priority 1: Explicit --constitution flag
             const userConstitutionPath = path.isAbsolute(options.constitution)
                 ? options.constitution

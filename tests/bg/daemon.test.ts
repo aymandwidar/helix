@@ -50,25 +50,12 @@ describe("forkBackgroundTask", () => {
         expect(readMeta("bg-test1")?.pid).toBe(99999);
     });
 
-    it("transitions to completed on done message + writes result", () => {
-        const child = fakeChild();
-        forkBackgroundTask({ prompt: "x", cwd, forkFn: () => child, id: "bg-done" });
-        child.emit("message", { type: "done", result: { finalText: "ok", iterations: 2, toolCalls: 1 } });
-        const meta = readMeta("bg-done");
-        expect(meta?.state).toBe("completed");
-        expect(meta?.finishedAt).toBeDefined();
-        expect(readResult("bg-done")?.finalText).toBe("ok");
-    });
+    // Final state (completed/failed) is written by the child worker itself
+    // (see runWorker in src/bg/daemon.ts), not by the parent's IPC handler.
+    // The parent only echoes IPC messages into output.log as best-effort
+    // progress logging while it's still alive.
 
-    it("transitions to failed on error message", () => {
-        const child = fakeChild();
-        forkBackgroundTask({ prompt: "x", cwd, forkFn: () => child, id: "bg-err" });
-        child.emit("message", { type: "error", error: "boom" });
-        expect(readMeta("bg-err")?.state).toBe("failed");
-        expect(readResult("bg-err")?.error).toBe("boom");
-    });
-
-    it("appends progress messages to output.log", () => {
+    it("appends progress messages to output.log when received via IPC", () => {
         const child = fakeChild();
         forkBackgroundTask({ prompt: "x", cwd, forkFn: () => child, id: "bg-prog" });
         child.emit("message", { type: "progress", turn: 1, lastTool: "file_read" });
@@ -77,6 +64,19 @@ describe("forkBackgroundTask", () => {
         expect(out).toMatch(/turn=1/);
         expect(out).toMatch(/turn=2/);
         expect(out).toMatch(/file_read/);
+    });
+
+    it("does not flip parent-tracked state on done/error IPC messages", () => {
+        // The parent leaves state alone — the child overwrites meta.json
+        // directly when it finishes. This test asserts the parent doesn't
+        // race with the child by also writing.
+        const child = fakeChild();
+        forkBackgroundTask({ prompt: "x", cwd, forkFn: () => child, id: "bg-done" });
+        child.emit("message", { type: "done", result: { finalText: "ok", iterations: 2, toolCalls: 1 } });
+        // No flip — state is still 'running' until the child writes its own meta.
+        expect(readMeta("bg-done")?.state).toBe("running");
+        // The parent did not write a result file either.
+        expect(readResult("bg-done")).toBeNull();
     });
 
     it("rejects when the running cap is reached", () => {
@@ -94,11 +94,17 @@ describe("forkBackgroundTask", () => {
         expect(listTasks().some(t => t.id === "bg-overflow" && t.state === "running")).toBe(false);
     });
 
-    it("falls back to running→failed if the child exits non-zero without a done message", () => {
+    it("does not flip state on child exit (child handles its own terminal state)", () => {
+        // The child writes its own final meta.json. The parent does not race
+        // with that by also writing on exit, because if the parent crashed
+        // before exit, the user would still want the child's authoritative
+        // state to land on disk.
         const child = fakeChild();
         forkBackgroundTask({ prompt: "x", cwd, forkFn: () => child, id: "bg-crash" });
         child.emit("exit", 1);
-        expect(readMeta("bg-crash")?.state).toBe("failed");
+        // State is still 'running' from the parent's view — only the child
+        // can mark it failed/completed once its own writeResult/updateMeta runs.
+        expect(readMeta("bg-crash")?.state).toBe("running");
     });
 
     it("permissionMode defaults to trusted; --yolo opts up", () => {
