@@ -10,7 +10,8 @@
 
 set -e
 
-HELIX_DIR="/home/dwidar/1-Projects/Helix"
+# Default HELIX_DIR to this script's location; allow override via env var
+HELIX_DIR="${HELIX_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 
 if [ -z "$1" ]; then
   echo "ERROR: No prompt provided"

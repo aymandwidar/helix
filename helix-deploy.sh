@@ -6,7 +6,9 @@ set -e
 
 BUILD_PATH="$1"
 APP_NAME="$2"
-HELIX_DIR="/home/dwidar/1-Projects/Helix"
+
+# Default HELIX_DIR to this script's location; allow override via env var
+HELIX_DIR="${HELIX_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 
 if [ -z "$BUILD_PATH" ] || [ -z "$APP_NAME" ]; then
   echo "ERROR: Usage: helix-deploy.sh <build-path> <app-name>"
